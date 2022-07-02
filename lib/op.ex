@@ -119,12 +119,13 @@ defmodule Op do
 
   defp spec_uuid(str, spec, default, row_prev, skip) do
     str = String.trim_leading(str)
+    car = String.first(str)
     cond do
-      str == "" ->
+      is_nil(car) ->
         {:ok, {default, str}}
-      String.first(str) == spec ->
+      car == spec ->
         UUID.parse(String.slice(str, 1..-1), default, row_prev)
-      Enum.member?(skip, String.first(str)) ->
+      Enum.member?(skip, car) ->
         {:ok, {default, str}}
       true ->
         {:error, "cannot decode spec uuid. Got " <> str}
@@ -175,4 +176,3 @@ defimpl String.Chars, for: Op do
       end
   end
 end
-

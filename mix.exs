@@ -20,6 +20,7 @@ defmodule Ronex.MixProject do
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
-    []#{:heap, "~> 2.0"}]
+    [{:ex_parameterized, "~> 1.3.7"}
+    ]
   end
 end
