@@ -17,7 +17,8 @@ defmodule Frame do
           type: UUID.zero(), event: UUID.zero(),
           object: UUID.zero(), location: UUID.zero()
         }
-      ops -> List.last(ops)
+      ops ->
+        List.last(ops)
     end
 
     case Op.parse(str, prev) do

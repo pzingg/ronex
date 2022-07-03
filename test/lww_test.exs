@@ -23,7 +23,7 @@ defmodule LWWTest do
     ]
   end
 
-  defp test_lww(_i, st, upd, out) do
+  defp test_lww(i, st, upd, out) do
     state = Frame.parse!(st)
     updates = Frame.parse!(upd)
     output = Frame.parse!(out)

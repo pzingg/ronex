@@ -21,6 +21,7 @@ defmodule Op do
             # event
             case spec_uuid(str, "@", prev_ev, my_obj, prefixes) do
               {:ok, {my_ev, str}} ->
+                my_ev = as_event_or_derived(my_ev)
                 prefixes = Enum.slice(prefixes, 1..-1)
                 str = String.trim_leading(str)
 
@@ -81,6 +82,10 @@ defmodule Op do
       err -> err
     end
   end
+
+  defp as_event_or_derived(%UUID{scheme: :event} = uuid), do: uuid
+  defp as_event_or_derived(%UUID{scheme: :derived} = uuid), do: uuid
+  defp as_event_or_derived(%UUID{} = uuid), do: %UUID{uuid | scheme: :event}
 
   defp atoms(txt, prev_uuid), do: atoms(txt, prev_uuid, [])
   defp atoms("", _, prev), do: {:ok, {prev, ""}}

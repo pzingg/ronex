@@ -104,24 +104,12 @@ defmodule UUID do
     parse_impl(str, prev_column, prev_row, init)
   end
 
-  defp parse_impl("", %UUID{} = prev_column, _, {_, 0, _, 0, _, _}) do
+  defp parse_impl("", %UUID{} = prev_column, _, {nil, _, nil, _, _, _}) do
     {:ok, {prev_column, ""}}
   end
 
-  defp parse_impl("", %UUID{hi: chi, lo: clo, scheme: csch}, _, {nil, _, _, 0, sch, var}) do
-    {:ok, {%UUID{hi: chi, lo: clo, scheme: sch || csch, variety: var || 0}, ""}}
-  end
-
-  defp parse_impl("", %UUID{lo: clo, scheme: csch}, _, {hi, _, _, 0, sch, var}) do
-    {:ok, {%UUID{hi: hi || 0, lo: clo, scheme: sch || csch, variety: var || 0}, ""}}
-  end
-
-  defp parse_impl("", %UUID{scheme: csch}, _, {hi, _, lo, _, sch, var}) do
-    {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || csch, variety: var || 0}, ""}}
-  end
-
-  defp parse_impl("", _, _, {hi, _, lo, _, sch, var}) do
-    {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || :name, variety: var || 0}, ""}}
+  defp parse_impl("", %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar}, _, {hi, _, lo, _, sch, var}) do
+    {:ok, {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0}, ""}}
   end
 
   defp parse_impl(str, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, var}) do
@@ -180,7 +168,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFF0_0000_0000, 4, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFF0_0000_0000, 4, lo, lo_bits, sch, var}
         )
 
       ?( when not is_nil(prev_column) and lo_bits == 0 ->
@@ -199,7 +187,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFFF_C000_0000, 5, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFFF_C000_0000, 5, lo, lo_bits, sch, var}
         )
 
       ?[ when not is_nil(prev_column) and lo_bits == 0 ->
@@ -218,7 +206,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFFF_FF00_0000, 6, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFFF_FF00_0000, 6, lo, lo_bits, sch, var}
         )
 
       ?{ when not is_nil(prev_column) and lo_bits == 0 ->
@@ -237,7 +225,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFFF_FFFC_0000, 7, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFFF_FFFC_0000, 7, lo, lo_bits, sch, var}
         )
 
       ?} when not is_nil(prev_column) and lo_bits == 0 ->
@@ -256,7 +244,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFFF_FFFF_F000, 8, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFFF_FFFF_F000, 8, lo, lo_bits, sch, var}
         )
 
       ?] when not is_nil(prev_column) and lo_bits == 0 ->
@@ -275,7 +263,7 @@ defmodule UUID do
           cdr,
           prev_column,
           prev_row,
-          {prev_column.hi &&& 0xFFF_FFFF_FFFF_FFC0, 9, 0, 0, sch, var}
+          {prev_column.hi &&& 0xFFF_FFFF_FFFF_FFC0, 9, lo, lo_bits, sch, var}
         )
 
       ?) when not is_nil(prev_column) and lo_bits == 0 ->
@@ -296,40 +284,33 @@ defmodule UUID do
         {:error, "` prefix inside UUID."}
 
       ?+ when hi_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :derived, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, lo, lo_bits, :derived, var})
 
       ?+ when lo_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :derived, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, lo, 0, :derived, var})
 
       ?% when hi_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :hash, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, lo, lo_bits, :hash, var})
 
       ?% when lo_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :hash, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, lo, 0, :hash, var})
 
       ?- when hi_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :event, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, lo, lo_bits, :event, var})
 
       ?- when lo_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :event, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, lo, 0, :event, var})
 
       ?$ when hi_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :name, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, lo, lo_bits, :name, var})
 
       ?$ when lo_bits == 0 ->
-        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :name, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, lo, 0, :name, var})
 
       _ ->
-        cond do
-          hi == 0 and lo == 0 and hi_bits == 0 and lo_bits == 0 ->
-            {:ok, {prev_column, str}}
-
-          hi == 0 and lo == 0 ->
-            {:ok, {%UUID{}, str}}
-
-          true ->
-            {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || :name, variety: var || 0}, str}}
-        end
+        # Terminate parsing if illegal char encountered
+        %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar} = prev_column
+        {:ok, {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0}, str}}
     end
   end
 
