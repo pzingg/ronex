@@ -94,7 +94,7 @@ defmodule Op do
 
       case car do
         ?> ->
-          case UUID.parse(String.trim_leading(cdr), prev_uuid, :nil) do
+          case UUID.parse(String.trim_leading(cdr), prev_uuid) do
             {:ok, {uu, cdr}} ->
               atoms(cdr, prev_uuid, [uu | prev])
             {:error, msg} -> {:error, msg}

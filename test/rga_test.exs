@@ -6,14 +6,14 @@ defmodule RGATest do
     st1 = "*rga#text_0a!"
     up1 = "*rga#text_0a@time'A';"
     out1 = "*rga#text_0a@time:0!'A'"
-    test_rga(st1, up1, out1)
+    test_rga(0, st1, up1, out1)
   end
 
   test "ron-test 05-rga a state plus an op" do
     st2 = "*rga#text_sa@1!@'A'"
     up2 = "*rga#text_sa@2:1'B';"
     out2 = "*rga#text_sa@2:0!@1 'A' ,@2 'B' ,"
-    test_rga(st2, up2, out2)
+    test_rga(1, st2, up2, out2)
   end
 
   test "ron-test 05-rga an op plus another op" do
@@ -21,7 +21,7 @@ defmodule RGATest do
     up3 = "*rga#text_ab@3:2'C';"
     # a subtree patch
     out3 = "*rga#text_ab@3:1!@2 :0 'B' ,@3 'C' ,"
-    test_rga(st3, up3, out3)
+    test_rga(2, st3, up3, out3)
   end
 
   test "ron-test 05-rga a state plus a patch" do
@@ -29,7 +29,7 @@ defmodule RGATest do
     up4 = "*rga#text_sp@2:1!:0'B'"
     # a merged state
     out4 = "*rga#text_sp@2:0!	@1 'A' ,	@2 'B' ,"
-    test_rga(st4, up4, out4)
+    test_rga(3, st4, up4, out4)
   end
 
   test "ron-test 05-rga a patch plus a patch" do
@@ -37,7 +37,7 @@ defmodule RGATest do
     up5 = "*rga#text_pp@3:2!:0'C'"
     # a merged patch
     out5 = "*rga#text_pp@3:1!	@2 :0 'B' ,@3 'C' ,"
-    test_rga(st5, up5, out5)
+    test_rga(4, st5, up5, out5)
   end
 
   test "ron-test 05-rga a state plus a later state" do
@@ -45,7 +45,7 @@ defmodule RGATest do
     up6 = "*rga#text_st@2:0!@1'A'@2'B'"
     # the later state
     out6 = "*rga#text_st@2:0!	@1 'A' ,	@2 'B' ,"
-    test_rga(st6, up6, out6)
+    test_rga(5, st6, up6, out6)
   end
 
   test "ron-test 05-rga two diverged states" do
@@ -53,7 +53,7 @@ defmodule RGATest do
     up7 = "*rga#text_sS@3:0!@1'A'@3'C'"
     # a merged state
     out7 = "*rga#text_sS@3:0!	@1 'A' ,	@2 'B' ,@3 'C' ,	"
-    test_rga(st7, up7, out7)
+    test_rga(6, st7, up7, out7)
   end
 
   test "ron-test 05-rga state + state with a new rm" do
@@ -61,7 +61,7 @@ defmodule RGATest do
     up8 = "*rga#text_sz@4:0!@1:4'A'@3:0'C'"
     # rm applied
     out8 = "*rga#text_sz@4:0!@1:4'A',@2:0'B',@3'C',"
-    test_rga(st8, up8, out8)
+    test_rga(7, st8, up8, out8)
   end
 
   test "ron-test 05-rga 'an op and a backspace rm" do
@@ -69,7 +69,7 @@ defmodule RGATest do
     up = "*rga#text@3:2;"
     # a patch, rm applied
     out = "*rga#text@3:1!@2:3'B',"
-    test_rga(st, up, out)
+    test_rga(8, st, up, out)
   end
 
   test "ron-test 05-rga a patch and a backspace rm" do
@@ -77,7 +77,7 @@ defmodule RGATest do
     up10 = "*rga#text_pd@4:2;"
     # a patch with the rm applied
     out10 = "*rga#text_pd@4:1!	@2 :4 'B' ,	@3 :0 'C' ,"
-    test_rga(st10, up10, out10)
+    test_rga(9, st10, up10, out10)
   end
 
   test "ron-test 05-rga a state and an rm-patch" do
@@ -85,7 +85,7 @@ defmodule RGATest do
     up11 = "*rga#text_sr@4:3-!@3:1,@4:2,"
     # a state with all rms applied
     out11 = "*rga#text_sr@4:0!  @1 :3 'A' ,  @2 :4 'B' ,"
-    test_rga(st11, up11, out11)
+    test_rga(10, st11, up11, out11)
   end
 
   test "ron-test 05-rga diverged states with concurrent rms and stuff" do
@@ -93,7 +93,7 @@ defmodule RGATest do
     up12 = "*rga#text_sx@4:0!@1:4'A'@3:0'C'"
     # a merged state
     out12 = "*rga#text_sx@5:0!@1:4a'A',@3:0'C',@2:5'B',"
-    test_rga(st12, up12, out12)
+    test_rga(11, st12, up12, out12)
   end
 
   test "ron-test 05-rga two states diverged in a convoluted way" do
@@ -101,7 +101,7 @@ defmodule RGATest do
     up13 = "*rga#text_sw@4:0!@1:4a'A'@3:0'C'@4:0'D'@2:5'B'"
     # merged
     out13 = "*rga#text_sw@4:0!@1 :4a 'A' ,@3 :0 'C' ,@4 'D' ,@2 :5 'B' ,"
-    test_rga(st13, up13, out13)
+    test_rga(12, st13, up13, out13)
   end
 
   test "ron-test 05-rga even more convoluted divergence" do
@@ -109,7 +109,7 @@ defmodule RGATest do
     up14 = "*rga#text_SW@7:0!@1:4a'A'@6:0'F'@3:7'C'@4:0'D'@2:5'B'"
     # merged
     out14 = "*rga#text_SW@7:0!@1 :4a 'A' ,@6 :0 'F' ,@5 'E' ,@3 :7 'C' ,@4 :0 'D' ,@2 :5 'B' ,"
-    test_rga(st14, up14, out14)
+    test_rga(13, st14, up14, out14)
   end
 
   test "ron-test 05-rga a state and an insert op" do
@@ -117,7 +117,7 @@ defmodule RGATest do
     up15 = "*rga#text_zi@3:1'-';"
     # inserted properly
     out15 = "*rga#text_zi@3:0!@1 'A' ,@3 '-' ,@2 'B' ,"
-    test_rga(st15, up15, out15)
+    test_rga(14, st15, up15, out15)
   end
 
   test "ron-test 05-rga rm eclipsed by a concurrent rm" do
@@ -125,23 +125,26 @@ defmodule RGATest do
     up16 = "*rga#text_dd@3:2;"
     # skipped
     out16 = "*rga#text_dd@4000000001:0!@1 'A' ,@2 :4 'B' ,"
-    test_rga(st16, up16, out16)
+    test_rga(15, st16, up16, out16)
   end
 
   test "ron-test 05-rga reorders: unapplicable remove" do
     st17 = "*rga#test@2!@1'A'@2'B'"
-		up17 = "*rga#test@4:3;"
+    up17 = "*rga#test@4:3;"
     # rm that is stashed in a separate rm frame
     out17 = "*rga#test@4!@1'A'@2'B'*rga#test@4:rm!:3,"
-    test_rga(st17, up17, out17)
+    test_rga(16, st17, up17, out17)
   end
 
   test "ron-test 05-rga for a stashed remove, the target arrives" do
     st18 = "*rga#text_~a@4:0!@1'A'@2'B'"
-    up18 = "*rga#text_~a@4:4-!:3,.*rga#text_~a@3:2'C';.*rga#text_s~p@2:0!@1'A'@2'B'.*rga#text_s~p@5:3!@4:0'D'@5'E'"
+
+    up18 =
+      "*rga#text_~a@4:4-!:3,.*rga#text_~a@3:2'C';.*rga#text_s~p@2:0!@1'A'@2'B'.*rga#text_s~p@5:3!@4:0'D'@5'E'"
+
     # target removed
     out18 = "*rga#text_~a@4000000001:0!@1 'A' ,@2 'B' ,@3 :4 'C' ,"
-    test_rga(st18, up18, out18)
+    test_rga(17, st18, up18, out18)
   end
 
   test "ron-test 05-rga unapplicable patch" do
@@ -149,23 +152,23 @@ defmodule RGATest do
     up22 = "*rga#test@5:3!@4:0'D'@5'E'"
     # the patch goes into a separate frame'!
     out22 = "*rga#test@5!@1'A'@2'B'*rga#test@5:3!@4:0'D'@5'E'"
-    test_rga(st22, up22, out22)
+    test_rga(21, st22, up22, out22)
   end
 
   test "ron-test 05-rga the stashed patch becomes applicable (the missing link arrives)" do
-		st19 = "*rga#test@2!@1'A'@2'B' *#@5:3!@4:0'D'@5'E'"
+    st19 = "*rga#test@2!@1'A'@2'B' *#@5:3!@4:0'D'@5'E'"
     up19 = "*rga#test@3:2'C';"
-  # the patch is applied
+    # the patch is applied
     out19 = "*rga#text_~b@5:0!@1 'A' ,@2 'B' ,@3 'C' ,@4 'D' ,@5 'E' ,"
-    test_rga(st19, up19, out19)
+    test_rga(18, st19, up19, out19)
   end
 
-  test "ron-test 05-rga an unappliecable patch with its own rm stash" do
+  test "ron-test 05-rga an unapplicable patch with its own rm stash" do
     st20 = "*rga#test@2!@1'A'@2'B'"
     up20 = "*rga#test@6:3!@4:0'D'@5'E'*#@6:rm!:3,"
     # all separate frames
     out20 = "*rga#test@6!@1'A'@2'B' *#@6:3!@4:0'D'@5'E' *#@6:rm!:3,"
-    test_rga(st20, up20, out20)
+    test_rga(19, st20, up20, out20)
   end
 
   test "ron-test 05-rga unapplied frames become applicable" do
@@ -173,26 +176,27 @@ defmodule RGATest do
     up21 = "*rga#test@3:2!@'C'"
     # all applied
     out21 = "*rga#test@3!@1'A'@2'B'@3:6'C'@4:0'D'@5'E'"
-    test_rga(st21, up21, out21)
+    test_rga(20, st21, up21, out21)
   end
 
-  defp test_rga(state, updates, output) do
-    state = Frame.parse!(state)
-    updates = Frame.parse!(updates)
-    output = Frame.parse!(output) |> Frame.split
+  defp test_rga(i, st, upd, out) do
+    state = Frame.parse!(st)
+    updates = Frame.parse!(upd)
+    expected = output = Frame.parse!(out) |> Frame.split()
 
-    IO.inspect ({:state,state})
-    IO.inspect ({:update,updates})
-    IO.inspect ({:output,output})
+    final = red = RGA.reduce(state, updates)
+    # final = RGA.map(red)
+    # expected = RGA.map(output)
 
-    final = RGA.reduce(state, updates)
-    IO.inspect ({:final,final})
-    #final = RGA.map(final)
-    #expected = RGA.map(output)
+    if final != expected do
+      IO.puts("#{i}: state #{inspect(state)}")
+      IO.puts("#{i}: updates #{inspect(updates)}")
+      # IO.puts("#{i}: red #{inspect(red)}"))
+      # IO.puts("#{i}: output #{inspect(output)}"))
+      IO.puts("#{i}: final #{inspect(final)}")
+      IO.puts("#{i}: expected #{inspect(expected)}")
+    end
 
-    #IO.inspect final
-    #IO.inspect expected
-
-    assert final == output
+    assert final == expected
   end
 end

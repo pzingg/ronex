@@ -5,47 +5,50 @@ defmodule UUID do
 
   @u60_mask 0x0FFF_FFFF_FFFF_FFFF
 
+  @doc """
+  String representation: `0`
+  """
   def zero(), do: %UUID{}
 
   @doc """
   String representation: `~~~~~~~~~~`
   """
   def error() do
-    %UUID{hi: 1_152_921_504_606_846_975, lo: 0}
+    %UUID{hi: (1 <<< 60) - 1, lo: 0}
+  end
+
+  @doc """
+  String representation: `~-`
+  """
+  def never() do
+    %UUID{hi: (63 <<< 54), lo: 0, scheme: :event}
   end
 
   def now(), do: %UUID{hi: 0, lo: 0, scheme: :event}
   def now_from(origin), do: %UUID{hi: 0, lo: origin, scheme: :event}
 
-  @doc """
-  String representation: `~-0`
-  """
-  def never() do
-    %UUID{hi: 1_134_907_106_097_364_992, lo: 0, scheme: :event}
-  end
-
-  def timestamp(dt_utc) do
-    value = encode_calendar(dt_utc)
+  def timestamp(dt_utc \\ nil) do
+    value = encode_calendar(dt_utc || DateTime.utc_now())
     %UUID{hi: value, lo: 0, scheme: :event}
   end
 
-  def timestamp_from(dt_utc, origin) do
-    value = encode_calendar(dt_utc)
+  def timestamp_from(origin, dt_utc \\ nil) do
+    value = encode_calendar(dt_utc || DateTime.utc_now())
     %UUID{hi: value, lo: origin, scheme: :event}
   end
 
-  def name(name) do
+  def name(name, variety \\ 0) do
     with {:ok, {uuid, ""}} <- UUID.parse(name) do
-      %UUID{hi: uuid.hi, lo: 0}
+      %UUID{hi: uuid.hi, lo: 0, variety: variety}
     else
       _ -> error()
     end
   end
 
-  def scoped_name(name, scope) do
+  def scoped_name(name, scope, variety \\ 0) do
     with {:ok, {name_uuid, ""}} <- UUID.parse(name),
          {:ok, {scope_uuid, ""}} <- UUID.parse(scope) do
-      %UUID{hi: name_uuid.hi, lo: scope_uuid.hi}
+      %UUID{hi: name_uuid.hi, lo: scope_uuid.hi, variety: variety}
     else
       _ -> error()
     end
@@ -65,16 +68,12 @@ defmodule UUID do
   def is_error?(%UUID{} = uuid), do: uuid == error()
   def is_error?(_), do: false
 
-  def new(value, origin, scheme) when is_atom(scheme) do
-    new(value, origin, scheme, 0)
-  end
-
-  def new(value, origin, scheme, variety) when is_atom(scheme) do
-    case decode_scheme(scheme) do
+  def new(value, origin, scheme, variety \\ 0) when is_integer(value) and is_integer(origin) and is_integer(variety) and is_atom(scheme) do
+    case encode_scheme(scheme) do
       nil ->
         error()
 
-      sch ->
+      _sch ->
         %UUID{
           hi: value &&& @u60_mask,
           lo: origin &&& @u60_mask,
@@ -92,34 +91,40 @@ defmodule UUID do
     end
   end
 
-  def parse(str), do: parse(str, UUID.zero(), UUID.zero())
-
-  def parse(str, prev_column, prev_row) do
-    init = {nil, 0, nil, 0, nil, nil}
-    parse(str, prev_column, prev_row, init)
+  def to_bitstring(%UUID{hi: hi, lo: lo, scheme: scheme, variety: variety}) do
+    hi = (hi || 0) ||| ((variety || 0) <<< 60)
+    lo = (lo || 0) ||| ((encode_scheme(scheme) || 0) <<< 60)
+    <<hi::unsigned-big-integer-size(64), lo::unsigned-big-integer-size(64)>>
   end
 
-  defp parse("", %UUID{} = prev_column, _, {_, 0, _, 0, _, _}) do
+  def parse(str), do: parse(str, UUID.zero(), UUID.zero())
+
+  def parse(str, prev_column, prev_row \\ nil) do
+    init = {nil, 0, nil, 0, nil, nil}
+    parse_impl(str, prev_column, prev_row, init)
+  end
+
+  defp parse_impl("", %UUID{} = prev_column, _, {_, 0, _, 0, _, _}) do
     {:ok, {prev_column, ""}}
   end
 
-  defp parse("", %UUID{hi: chi, lo: clo, scheme: csch}, _, {nil, _, _, 0, sch, var}) do
+  defp parse_impl("", %UUID{hi: chi, lo: clo, scheme: csch}, _, {nil, _, _, 0, sch, var}) do
     {:ok, {%UUID{hi: chi, lo: clo, scheme: sch || csch, variety: var || 0}, ""}}
   end
 
-  defp parse("", %UUID{lo: clo, scheme: csch}, _, {hi, _, _, 0, sch, var}) do
+  defp parse_impl("", %UUID{lo: clo, scheme: csch}, _, {hi, _, _, 0, sch, var}) do
     {:ok, {%UUID{hi: hi || 0, lo: clo, scheme: sch || csch, variety: var || 0}, ""}}
   end
 
-  defp parse("", %UUID{scheme: csch}, _, {hi, _, lo, _, sch, var}) do
+  defp parse_impl("", %UUID{scheme: csch}, _, {hi, _, lo, _, sch, var}) do
     {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || csch, variety: var || 0}, ""}}
   end
 
-  defp parse("", _, _, {hi, _, lo, _, sch, var}) do
+  defp parse_impl("", _, _, {hi, _, lo, _, sch, var}) do
     {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || :name, variety: var || 0}, ""}}
   end
 
-  defp parse(str, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, var}) do
+  defp parse_impl(str, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, var}) do
     str = String.trim_leading(str)
     car = String.first(str) |> :binary.first()
     cdr = String.slice(str, 1..-1)
@@ -141,7 +146,7 @@ defmodule UUID do
 
         if is_nil(var) && hi_bits == 0 && val <= 15 && String.starts_with?(cdr, "/") do
           cdr = String.slice(cdr, 1..-1)
-          parse(cdr, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, val})
+          parse_impl(cdr, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, val})
         else
           state =
             case hi_bits do
@@ -166,12 +171,12 @@ defmodule UUID do
               {:error, reason}
 
             _ ->
-              parse(cdr, prev_column, prev_row, state)
+              parse_impl(cdr, prev_column, prev_row, state)
           end
         end
 
       ?( when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -179,7 +184,7 @@ defmodule UUID do
         )
 
       ?( when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -190,7 +195,7 @@ defmodule UUID do
         {:error, "( prefix inside UUID."}
 
       ?[ when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -198,7 +203,7 @@ defmodule UUID do
         )
 
       ?[ when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -209,7 +214,7 @@ defmodule UUID do
         {:error, "[ prefix inside UUID."}
 
       ?{ when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -217,7 +222,7 @@ defmodule UUID do
         )
 
       ?{ when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -228,7 +233,7 @@ defmodule UUID do
         {:error, "{ prefix inside UUID."}
 
       ?} when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -236,7 +241,7 @@ defmodule UUID do
         )
 
       ?} when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -247,7 +252,7 @@ defmodule UUID do
         {:error, "} prefix inside UUID."}
 
       ?] when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -255,7 +260,7 @@ defmodule UUID do
         )
 
       ?] when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -266,7 +271,7 @@ defmodule UUID do
         {:error, "] prefix inside UUID."}
 
       ?) when not is_nil(prev_column) and hi_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -274,7 +279,7 @@ defmodule UUID do
         )
 
       ?) when not is_nil(prev_column) and lo_bits == 0 ->
-        parse(
+        parse_impl(
           cdr,
           prev_column,
           prev_row,
@@ -284,35 +289,35 @@ defmodule UUID do
       ?) ->
         {:error, ") prefix inside UUID."}
 
-      ?` when prev_row != nil and hi_bits == 0 ->
+      ?` when not is_nil(prev_row) and hi_bits == 0 ->
         {:ok, {prev_row, str}}
 
       ?` ->
         {:error, "` prefix inside UUID."}
 
       ?+ when hi_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :derived, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :derived, var})
 
       ?+ when lo_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {hi, 10, 0, 0, :derived, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :derived, var})
 
       ?% when hi_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :hash, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :hash, var})
 
       ?% when lo_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {hi, 10, 0, 0, :hash, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :hash, var})
 
       ?- when hi_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :event, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :event, var})
 
       ?- when lo_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {hi, 10, 0, 0, :event, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :event, var})
 
       ?$ when hi_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :name, var})
+        parse_impl(cdr, prev_column, prev_row, {prev_column.hi, 10, 0, 0, :name, var})
 
       ?$ when lo_bits == 0 ->
-        parse(cdr, prev_column, prev_row, {hi, 10, 0, 0, :name, var})
+        parse_impl(cdr, prev_column, prev_row, {hi, 10, 0, 0, :name, var})
 
       _ ->
         cond do
@@ -325,6 +330,43 @@ defmodule UUID do
           true ->
             {:ok, {%UUID{hi: hi || 0, lo: lo || 0, scheme: sch || :name, variety: var || 0}, str}}
         end
+    end
+  end
+
+  def decode_scheme(sch) do
+    Enum.at([:name, :hash, :event, :derived], sch &&& 3)
+  end
+
+  def encode_scheme(sch) do
+    case sch do
+      :name -> 0
+      :hash -> 1
+      :event -> 2
+      :derived -> 3
+      _ -> nil
+    end
+  end
+
+  def encode_calendar(dt_utc) do
+    %{
+      year: year,
+      month: month,
+      day: day,
+      hour: hour,
+      minute: minute,
+      second: second,
+      microsecond: {microsecond, _precision}
+    } = DateTime.truncate(dt_utc, :microsecond)
+
+    if year < 2010 do
+      0
+    else
+      i = (year - 2010) * 12 + month - 1
+      i = i <<< 6 ||| day - 1
+      i = i <<< 6 ||| hour
+      i = i <<< 6 ||| minute
+      i = i <<< 6 ||| second
+      i <<< 24 ||| microsecond
     end
   end
 
@@ -346,7 +388,7 @@ defmodule UUID do
 
   def format_with_context(
         %UUID{hi: hi, lo: lo, scheme: sch, variety: var} = uuid,
-        %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar} = context
+        %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar}
       ) do
     if var != cvar do
       # don't want to optimize this; a rare case anyway
@@ -355,8 +397,12 @@ defmodule UUID do
       {value_part, vtype} = u64_to_string_with_context(hi, chi)
 
       if lo == 0 do
-        # transcendent name
-        value_part
+        if sch == :name do
+          # transcendent name
+          value_part
+        else
+          value_part <> scheme_to_string(sch)
+        end
       else
         # sometimes, we may skip UUID separator (+-%$)
         {origin_part, otype} = u64_to_string_with_context(lo, clo)
@@ -365,7 +411,7 @@ defmodule UUID do
           sch == csch && otype == :empty && vtype != :empty ->
             value_part
 
-          sch == csch && otype == :prefix && vtype == :prefix ->
+          sch == csch && otype == :prefixed && vtype == :prefixed ->
             value_part <> origin_part
 
           true ->
@@ -389,50 +435,13 @@ defmodule UUID do
         value = value <<< prefix &&& @u60_mask
 
         if value == 0 do
-          {pchar, :prefix}
+          {pchar, :prefixed}
         else
-          {pchar <> u64_to_string(value), :prefix}
+          {pchar <> u64_to_string(value), :prefixed}
         end
 
       _ ->
-        {u64_to_string(value), :normal}
-    end
-  end
-
-  def decode_scheme(sch) do
-    case sch do
-      :name -> 0
-      :hash -> 1
-      :event -> 2
-      :derived -> 3
-      _ -> nil
-    end
-  end
-
-  def encode_scheme(sch) do
-    Enum.at([:name, :hash, :event, :derived], sch &&& 3)
-  end
-
-  def encode_calendar(dt_utc) do
-    %{
-      year: year,
-      month: month,
-      day: day,
-      hour: hour,
-      minute: minute,
-      second: second,
-      microsecond: {microsecond, _precision}
-    } = DateTime.truncate(dt_utc, :microsecond)
-
-    if year < 2010 do
-      0
-    else
-      i = (year - 2010) * 12 + month - 1
-      i = i <<< 6 ||| day - 1
-      i = i <<< 6 ||| hour
-      i = i <<< 6 ||| minute
-      i = i <<< 6 ||| second
-      i <<< 24 ||| microsecond
+        {u64_to_string(value), :full}
     end
   end
 
@@ -487,10 +496,13 @@ defmodule UUID do
     |> List.to_string()
   end
 
+  @doc """
+  Number of bits required to encode a 64-bit value in base 2.
+  """
   def len64(0), do: 0
 
   def len64(value) do
-    {x, n} =
+    {_, n} =
       Enum.reduce([32, 16, 8, 4, 2, 1], {value, 1}, fn i, {x, n} ->
         if x >= 1 <<< i do
           {x >>> i, n + i}

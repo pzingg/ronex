@@ -30,14 +30,14 @@ defmodule UUIDTest do
 
   test "parse prefix 1" do
     assert {:ok, {uuid_a, ""}} = UUID.parse("1")
-    assert {:ok, {uuid, ""}} = UUID.parse(")1", uuid_a, nil)
+    assert {:ok, {uuid, ""}} = UUID.parse(")1", uuid_a)
     assert uuid == %UUID{hi: 1 <<< 54 ||| 1, lo: 0, scheme: :name, variety: 0}
     assert to_string(uuid) == "1000000001"
   end
 
   test "parse prefix in context" do
     assert {:ok, {uuid_hello, ""}} = UUID.parse("hello-111")
-    assert {:ok, {uuid, ""}} = UUID.parse("[world-111", uuid_hello, nil)
+    assert {:ok, {uuid, ""}} = UUID.parse("[world-111", uuid_hello)
     assert {:ok, {uuid_hello_world, ""}} = UUID.parse("helloworld-111")
     assert uuid.scheme == :event
     assert uuid.variety == 0
@@ -71,7 +71,7 @@ defmodule UUIDTest do
   test_with_params "parse and format",
                    fn ctx_str, uuid_str, expected ->
                      assert {:ok, {context, ""}} = UUID.parse(ctx_str)
-                     assert {:ok, {uuid, ""}} = UUID.parse(uuid_str, context, nil)
+                     assert {:ok, {uuid, ""}} = UUID.parse(uuid_str, context)
                      result = to_string(uuid)
                      assert result == expected
                      zipped = UUID.format_with_context(uuid, context)
