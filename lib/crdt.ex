@@ -4,8 +4,9 @@ defmodule Crdt do
   """
 
   @doc """
-  `module` is an implementing module that has a `compare/2` function
-  used to sort the `:raw` and `:reduced` frame Ops.
+  `module` is an implementing module that has `compare/2`
+  `compare_primary/2` function used to sort and prune the `:raw` and `:reduced`
+  Ops in the frames.
   """
   def merge(module, state, updates) do
     with [%Op{type: ty, object: obj, location: loc} | _] <- state do

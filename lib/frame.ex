@@ -1,46 +1,44 @@
 defmodule Frame do
   defstruct type: nil, data: nil
 
+  def parse(str) do
+    case parse_impl(str, [], nil) do
+      {:ok, ops} -> {:ok, Enum.reverse(ops)}
+      err -> err
+    end
+  end
+
   # Parse until EOF
-  def parse(str), do: parse_impl(str, [])
-  defp parse_impl("", ops), do: {:ok, ops}
-  defp parse_impl("." <> _, ops), do: {:ok, ops}
-  defp parse_impl("\t" <> cdr, ops), do: parse_impl(cdr, ops)
-  defp parse_impl("\n" <> cdr, ops), do: parse_impl(cdr, ops)
-  defp parse_impl("\r" <> cdr, ops), do: parse_impl(cdr, ops)
-  defp parse_impl("\v" <> cdr, ops), do: parse_impl(cdr, ops)
-  defp parse_impl(" " <> cdr, ops), do: parse_impl(cdr, ops)
+  defp parse_impl("", ops, _), do: {:ok, ops}
+  # "." can be used in a single string to separate frames
+  defp parse_impl("." <> cdr, ops, _), do: parse_impl(cdr, ops, nil)
+  # Swallow all whitespace
+  defp parse_impl("\t" <> cdr, ops, prev), do: parse_impl(cdr, ops, prev)
+  defp parse_impl("\n" <> cdr, ops, prev), do: parse_impl(cdr, ops, prev)
+  defp parse_impl("\r" <> cdr, ops, prev), do: parse_impl(cdr, ops, prev)
+  defp parse_impl("\v" <> cdr, ops, prev), do: parse_impl(cdr, ops, prev)
+  defp parse_impl(" " <> cdr, ops, prev), do: parse_impl(cdr, ops, prev)
 
-  defp parse_impl(str, ops) do
+  # Prepend ops onto a empty list.  Last op is on top of list
+  defp parse_impl(str, ops, prev) do
     prev =
-      case ops do
-        [] ->
-          %Op{
-            type: UUID.zero(),
-            event: UUID.zero(),
-            object: UUID.zero(),
-            location: UUID.zero()
-          }
-
-        ops ->
-          List.last(ops)
-      end
+      prev ||
+        %Op{
+          type: UUID.zero(),
+          event: UUID.zero(),
+          object: UUID.zero(),
+          location: UUID.zero()
+        }
 
     case Op.parse(str, prev) do
       {:ok, {op, cdr}} ->
-        if ops == [] do
-          parse_impl(cdr, [op])
-        else
-          # prev = List.last(ops)
-          # %Op{ term: prev_term } = prev
-          # %Op{ term: term } = op
+        # prev = List.last(ops)
+        # %Op{ term: prev_term } = prev
+        # %Op{ term: term } = op
 
-          # if prev_term == :raw or term != :reduced do
-          #  {:ok, ops, str}
-          # else
-          parse_impl(cdr, ops ++ [op])
-          # end
-        end
+        # if prev_term == :raw or term != :reduced do
+        #  {:ok, ops, str}
+        parse_impl(cdr, [op | ops], op)
 
       err = {:error, _} ->
         err

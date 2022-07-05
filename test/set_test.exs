@@ -28,7 +28,10 @@ defmodule SetTest do
       {11, "*set#test11@2!@=2@1=1", ["*set#test11@3!@:2,@4:1,", "*set#test11@5!@=5"],
        "*set#test11@5!@=5@3:2,@4:1,"},
       {12, "*set#test12@3!@:2,@4:1", "*set#test12@5!@=5.*set#test12@2!@=2@1=1",
-       "*set#test12@2!@5=5@3:2,@4:1,"}
+       "*set#test12@2!@5=5@3:2,@4:1,"},
+      # Same as test11 with "." separating the updates
+      {13, "*set#test13@2!@=2@1=1", "*set#test13@3!@:2,@4:1,.*set#test13@5!@=5",
+       "*set#test13@5!@=5@3:2,@4:1,"}
     ]
   end
 
