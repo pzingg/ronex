@@ -4,6 +4,8 @@ defmodule UUID do
   defstruct hi: 0, lo: 0, scheme: :name, variety: 0
 
   @u60_mask 0x0FFF_FFFF_FFFF_FFFF
+  @error_hi (1 <<< 60) - 1
+  @never_hi 63 <<< 54
 
   @doc """
   String representation: `0`
@@ -14,14 +16,14 @@ defmodule UUID do
   String representation: `~~~~~~~~~~`
   """
   def error() do
-    %UUID{hi: (1 <<< 60) - 1, lo: 0}
+    %UUID{hi: @error_hi, lo: 0}
   end
 
   @doc """
   String representation: `~-`
   """
   def never() do
-    %UUID{hi: (63 <<< 54), lo: 0, scheme: :event}
+    %UUID{hi: @never_hi, lo: 0, scheme: :event}
   end
 
   def now(), do: %UUID{hi: 0, lo: 0, scheme: :event}
@@ -54,21 +56,39 @@ defmodule UUID do
     end
   end
 
-  def is_less?(%UUID{hi: hi1, lo: lo1}, %UUID{hi: hi2, lo: lo2}) do
-    if hi1 == hi2 do
-      lo1 < lo2
-    else
-      hi1 < hi2
+  def compare(%UUID{hi: hi1, lo: lo1}, %UUID{hi: hi2, lo: lo2}) do
+    cond do
+      hi1 == hi2 ->
+        cond do
+          lo1 == lo2 -> :eq
+          lo1 < lo2 -> :lt
+          true -> :gt
+        end
+
+      hi1 < hi2 ->
+        :lt
+
+      true ->
+        :gt
     end
   end
 
-  def is_zero?(%UUID{hi: 0}), do: true
-  def is_zero?(_), do: false
+  def equals?(%UUID{} = uuid1, %UUID{} = uuid2) do
+    compare(uuid1, uuid2) == :eq
+  end
 
-  def is_error?(%UUID{} = uuid), do: uuid == error()
-  def is_error?(_), do: false
+  def less_than_or_equal_to?(%UUID{} = uuid1, %UUID{} = uuid2) do
+    compare(uuid1, uuid2) != :gt
+  end
 
-  def new(value, origin, scheme, variety \\ 0) when is_integer(value) and is_integer(origin) and is_integer(variety) and is_atom(scheme) do
+  def zero?(%UUID{hi: 0}), do: true
+  def zero?(_), do: false
+
+  def error?(%UUID{hi: @error_hi}), do: true
+  def error?(_), do: false
+
+  def new(value, origin, scheme, variety \\ 0)
+      when is_integer(value) and is_integer(origin) and is_integer(variety) and is_atom(scheme) do
     case encode_scheme(scheme) do
       nil ->
         error()
@@ -92,8 +112,8 @@ defmodule UUID do
   end
 
   def to_bitstring(%UUID{hi: hi, lo: lo, scheme: scheme, variety: variety}) do
-    hi = (hi || 0) ||| ((variety || 0) <<< 60)
-    lo = (lo || 0) ||| ((encode_scheme(scheme) || 0) <<< 60)
+    hi = hi || 0 ||| (variety || 0) <<< 60
+    lo = lo || 0 ||| (encode_scheme(scheme) || 0) <<< 60
     <<hi::unsigned-big-integer-size(64), lo::unsigned-big-integer-size(64)>>
   end
 
@@ -108,8 +128,14 @@ defmodule UUID do
     {:ok, {prev_column, ""}}
   end
 
-  defp parse_impl("", %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar}, _, {hi, _, lo, _, sch, var}) do
-    {:ok, {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0}, ""}}
+  defp parse_impl(
+         "",
+         %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar},
+         _,
+         {hi, _, lo, _, sch, var}
+       ) do
+    {:ok,
+     {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0}, ""}}
   end
 
   defp parse_impl(str, prev_column, prev_row, {hi, hi_bits, lo, lo_bits, sch, var}) do
@@ -310,7 +336,10 @@ defmodule UUID do
       _ ->
         # Terminate parsing if illegal char encountered
         %UUID{hi: chi, lo: clo, scheme: csch, variety: cvar} = prev_column
-        {:ok, {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0}, str}}
+
+        {:ok,
+         {%UUID{hi: hi || chi, lo: lo || clo, scheme: sch || csch, variety: var || cvar || 0},
+          str}}
     end
   end
 
@@ -351,6 +380,13 @@ defmodule UUID do
     end
   end
 
+  @doc """
+  Formats a UUID with all the bits:
+  1. Variety prefix (if `:variety` is not zero)
+  2. Value string, 10 chars
+  3. Scheme separator, even for transcendent names
+  4. Origin string, 10 chars
+  """
   def format(%UUID{hi: 0, lo: 0}), do: "0"
 
   def format(%UUID{hi: hi, lo: 0, scheme: :name, variety: variety}) do
@@ -362,9 +398,25 @@ defmodule UUID do
       UUID.u64_to_string(hi) <> UUID.scheme_to_string(scheme) <> UUID.u64_to_string(lo)
   end
 
-  # FormatZipUUID
+  @doc """
+  Formats a "zipped" UUID without the scheme separator. Used
+  for formatting Ops, where the known context implies the scheme.
+  """
+  def format_as_zipped_name(%UUID{} = uuid) do
+    format_with_context(%UUID{uuid | scheme: :name, variety: 0})
+  end
+
+  @doc """
+  Formats a "zipped" UUID with the scheme separator (except for
+  transcendental names).
+  """
   def format_with_context(uuid), do: format_with_context(uuid, %UUID{})
 
+  @doc """
+  Formats a "zipped" UUID within a context UUID.
+  Compresses most significant bits of value and origin parts,
+  and removes the separator if the scheme is the same as the context.
+  """
   def format_with_context(%UUID{hi: 0, lo: 0}, _context), do: "0"
 
   def format_with_context(
@@ -379,7 +431,7 @@ defmodule UUID do
 
       if lo == 0 do
         if sch == :name do
-          # transcendent name
+          # transcendental name
           value_part
         else
           value_part <> scheme_to_string(sch)

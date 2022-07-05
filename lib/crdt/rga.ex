@@ -1,8 +1,17 @@
-defmodule RGA do
-  def reduce(state, update) do
+defmodule Crdt.Rga do
+  @moduledoc """
+  Replicated Growable Array CRDT.
+
+  The RON 2.1 RGA/CT follows the classic RGA/CT data structure:
+    * a tree of atoms/ops (for plain text, one letter - one op),
+    * a new atom becomes a child of its preceding atom at the
+      time of insertion,
+    * siblings are ordered by the logical timestamp (younger first)
+  """
+  def reduce(state, updates) do
     state = Frame.split(state)
-    update = Frame.split(update)
-    frames = state ++ update
+    updates = List.flatten(updates) |> Frame.split()
+    frames = state ++ updates
 
     {rms, todo} =
       Enum.split_with(frames, fn
@@ -26,10 +35,10 @@ defmodule RGA do
         _ -> nil
       end)
       |> Enum.filter(fn x -> x != nil end)
-      |> Enum.sort(fn {a, _}, {b, _} -> UUID.is_less?(a, b) end)
+      |> Enum.sort(fn {a, _}, {b, _} -> UUID.less_than_or_equal_to?(a, b) end)
       |> Enum.chunk_by(fn {ev, _} -> ev end)
       |> Enum.map(fn chunk ->
-        Enum.sort(chunk, fn {_, a}, {_, b} -> UUID.is_less?(a, b) end) |> hd
+        Enum.sort(chunk, fn {_, a}, {_, b} -> UUID.less_than_or_equal_to?(a, b) end) |> hd
       end)
       |> Map.new()
 
@@ -37,7 +46,7 @@ defmodule RGA do
 
     event =
       Enum.reduce(frames, UUID.zero(), fn [x | _], acc ->
-        if UUID.is_less?(acc, x.event) do
+        if UUID.less_than_or_equal_to?(acc, x.event) do
           x.event
         else
           acc
@@ -48,7 +57,7 @@ defmodule RGA do
     todo =
       Enum.sort(todo, fn
         [%Op{location: loc1} | _], [%Op{location: loc2} | _] ->
-          UUID.is_less?(loc1, loc2)
+          UUID.less_than_or_equal_to?(loc1, loc2)
       end)
 
     # IO.inspect todo, label: "todo"
@@ -83,8 +92,8 @@ defmodule RGA do
     |> Enum.sort(fn
       %Op{location: loc1, event: ev1}, %Op{location: loc2, event: ev2} ->
         cond do
-          loc1 == loc2 -> UUID.is_less?(ev1, ev2)
-          true -> UUID.is_less?(loc2, loc1)
+          loc1 == loc2 -> UUID.less_than_or_equal_to?(ev1, ev2)
+          true -> UUID.less_than_or_equal_to?(loc2, loc1)
         end
     end)
   end
@@ -140,7 +149,7 @@ defmodule RGA do
           {car, rms}
 
         rm ->
-          if UUID.is_less?(car_loc, rm) do
+          if UUID.less_than_or_equal_to?(car_loc, rm) do
             rms = Map.delete(rms, car_ev)
             {%Op{car | location: rm}, rms}
           else
@@ -186,8 +195,8 @@ defmodule RGA do
           a.event == b.location -> true
           b.event == a.location -> false
           # otherwise, sort by (ev, loc)
-          a.event == b.event -> UUID.is_less?(a.location, b.location)
-          true -> UUID.is_less?(a.event, b.event)
+          a.event == b.event -> UUID.less_than_or_equal_to?(a.location, b.location)
+          true -> UUID.less_than_or_equal_to?(a.event, b.event)
         end
       end)
 

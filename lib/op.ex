@@ -1,8 +1,7 @@
 defmodule Op do
-  defstruct type: :nil, object: :nil, event: UUID.now(), location: :nil, atoms: [], term: :raw
+  defstruct type: nil, object: nil, event: UUID.now(), location: nil, atoms: [], term: :raw
 
-  def parse(str, %Op{ type: prev_ty, object: prev_obj, event: prev_ev, location: prev_loc}) do
-
+  def parse(str, %Op{type: prev_ty, object: prev_obj, event: prev_ev, location: prev_loc}) do
     str = String.trim_leading(str)
     prefixes = ["#", "@", ":", "'", "!", "^", "=", ">", ",", ";", "?"]
 
@@ -31,55 +30,66 @@ defmodule Op do
                     str = String.trim_leading(str)
 
                     # atoms
-                    atoms_res = case str do
-                      "'" <> _ -> atoms(str, my_loc)
-                      "^" <> _ -> atoms(str, my_loc)
-                      "=" <> _ -> atoms(str, my_loc)
-                      ">" <> _ -> atoms(str, my_loc)
-                      "," <> _ -> {:ok, {[], str}}
-                      ";" <> _ -> {:ok, {[], str}}
-                      "!" <> _ -> {:ok, {[], str}}
-                      "?" <> _ -> {:ok, {[], str}}
-                      _ -> {:ok, {[], str}}
-                    end
+                    atoms_res =
+                      case str do
+                        "'" <> _ -> atoms(str, my_loc)
+                        "^" <> _ -> atoms(str, my_loc)
+                        "=" <> _ -> atoms(str, my_loc)
+                        ">" <> _ -> atoms(str, my_loc)
+                        "," <> _ -> {:ok, {[], str}}
+                        ";" <> _ -> {:ok, {[], str}}
+                        "!" <> _ -> {:ok, {[], str}}
+                        "?" <> _ -> {:ok, {[], str}}
+                        _ -> {:ok, {[], str}}
+                      end
 
                     case atoms_res do
                       {:ok, {my_atoms, str}} ->
                         str = String.trim_leading(str)
 
                         # terminator
-                        {my_term, str} = case str do
-                          ";" <> cdr -> {:raw, cdr}
-                          "!" <> cdr -> {:header, cdr}
-                          "?" <> cdr -> {:query, cdr}
-                          "," <> cdr -> {:reduced, cdr}
-                          _ -> {:reduced, str}
-                        end
+                        {my_term, str} =
+                          case str do
+                            ";" <> cdr -> {:raw, cdr}
+                            "!" <> cdr -> {:header, cdr}
+                            "?" <> cdr -> {:query, cdr}
+                            "," <> cdr -> {:reduced, cdr}
+                            _ -> {:reduced, str}
+                          end
 
                         op = %Op{
-                          type: my_ty, object: my_obj, event: my_ev,
-                          location: my_loc, atoms: my_atoms,
+                          type: my_ty,
+                          object: my_obj,
+                          event: my_ev,
+                          location: my_loc,
+                          atoms: my_atoms,
                           term: my_term
                         }
+
                         {:ok, {op, String.trim_leading(str)}}
 
-                      err -> err
+                      err ->
+                        err
                     end
 
                   # location
-                  err -> err
+                  err ->
+                    err
                 end
 
               # event
-              err -> err
+              err ->
+                err
             end
 
           # object
-          err -> err
+          err ->
+            err
         end
 
       # type
-      err -> err
+      err ->
+        err
     end
   end
 
@@ -89,12 +99,14 @@ defmodule Op do
 
   defp atoms(txt, prev_uuid), do: atoms(txt, prev_uuid, [])
   defp atoms("", _, prev), do: {:ok, {prev, ""}}
+
   defp atoms(txt, prev_uuid, prev) do
     txt = String.trim_leading(txt)
+
     if txt == "" do
       {:ok, {prev, ""}}
     else
-      car = String.first(txt) |> :binary.first
+      car = String.first(txt) |> :binary.first()
       cdr = String.slice(txt, 1..-1)
 
       case car do
@@ -102,22 +114,28 @@ defmodule Op do
           case UUID.parse(String.trim_leading(cdr), prev_uuid) do
             {:ok, {uu, cdr}} ->
               atoms(cdr, prev_uuid, [uu | prev])
-            {:error, msg} -> {:error, msg}
+
+            {:error, msg} ->
+              {:error, msg}
           end
 
         ?= ->
           {val, cdr} = Integer.parse(cdr)
           atoms(cdr, prev_uuid, [val | prev])
 
-        ?^ ->  {val, cdr} = Float.parse(cdr)
+        ?^ ->
+          {val, cdr} = Float.parse(cdr)
           atoms(cdr, prev_uuid, [val | prev])
 
         ?' ->
           {str, cdr} = string(cdr, {:def, ""})
           atoms(cdr, prev_uuid, [str | prev])
 
-        _ when prev == [] -> {:error, "Failed to parse any atom"}
-        _ -> {:ok, {prev, txt}}
+        _ when prev == [] ->
+          {:error, "Failed to parse any atom"}
+
+        _ ->
+          {:ok, {prev, txt}}
       end
     end
   end
@@ -125,55 +143,69 @@ defmodule Op do
   defp spec_uuid(str, spec, default, row_prev, skip) do
     str = String.trim_leading(str)
     car = String.first(str)
+
     cond do
       is_nil(car) ->
         {:ok, {default, str}}
+
       car == spec ->
         UUID.parse(String.slice(str, 1..-1), default, row_prev)
+
       Enum.member?(skip, car) ->
         {:ok, {default, str}}
+
       true ->
-        {:error, "cannot decode spec uuid. Got " <> str}
+        {:error, "cannot decode spec uuid. Got '#{str}'"}
     end
   end
 
   defp string(txt, {state, str}) do
-    car = String.first(txt) |> :binary.first
+    car = String.first(txt) |> :binary.first()
     cdr = String.slice(txt, 1..-1)
 
     case car do
       ?' when state == :def ->
         {str, cdr}
+
       ?' when state == :esc ->
         string(cdr, {:def, str <> "'"})
+
       ?\\ when state == :def ->
         string(cdr, {:esc, str})
+
       ?\\ when state == :esc ->
         string(cdr, {:def, str <> "\\"})
+
       _ when state == :def ->
         string(cdr, {:def, str <> String.first(txt)})
+
       ?n when state == :esc ->
         string(cdr, {:def, str <> "\n"})
+
       ?t when state == :esc ->
         string(cdr, {:def, str <> "\t"})
-      # XXX: more escape seqs
+        # XXX: more escape seqs
     end
   end
 end
 
 defimpl String.Chars, for: Op do
-  def to_string(%Op{ type: ty, event: ev, object: obj, location: loc, term: term, atoms: atoms }) do
-    "*" <> Kernel.to_string(ty)
-      <> "#" <> Kernel.to_string(obj)
-      <> "@" <> Kernel.to_string(ev)
-      <> ":" <> Kernel.to_string(loc)
-      <> Enum.reduce(atoms, "", fn
+  def to_string(%Op{type: ty, event: ev, object: obj, location: loc, term: term, atoms: atoms}) do
+    "*" <>
+      UUID.format_as_zipped_name(ty) <>
+      "#" <>
+      UUID.format_as_zipped_name(obj) <>
+      "@" <>
+      UUID.format_as_zipped_name(ev) <>
+      ":" <>
+      UUID.format_as_zipped_name(loc) <>
+      Enum.reduce(atoms, "", fn
         i, acc when is_integer(i) -> acc <> "=" <> Kernel.to_string(i)
         f, acc when is_float(f) -> acc <> "^" <> Kernel.to_string(f)
         u = %UUID{}, acc -> acc <> "=" <> Kernel.to_string(u)
         s, acc -> acc <> "'" <> s <> "'"
-      end)
-      <> case term do
+      end) <>
+      case term do
         :raw -> ";"
         :reduced -> ","
         :header -> "!"

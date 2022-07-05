@@ -101,3 +101,7 @@ Besides the Base64 characters, other punctuation marks have special meanings:
 | \;   | Frame   | Term    | End of raw frame                                               |
 | \,   | Frame   | Term    | End of reduced frame                                           |
 | \.   | Frame   | Term    | Optional end of frame                                          |
+
+## Testing
+
+See original https://github.com/gritzko/ron-test for test suites

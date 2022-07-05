@@ -7,7 +7,7 @@ defmodule UUIDTest do
   test "zero" do
     uuid = UUID.zero()
     assert uuid == %UUID{hi: 0, lo: 0, scheme: :name, variety: 0}
-    assert UUID.is_zero?(uuid)
+    assert UUID.zero?(uuid)
     assert to_string(uuid) == "0"
   end
 

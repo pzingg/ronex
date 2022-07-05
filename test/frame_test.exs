@@ -3,7 +3,9 @@ defmodule FrameTest do
   doctest Frame
 
   test "basic decode" do
-    txt = "  \n*rga#1UQ8p+bart@1UQ8yk+lisa:0!\n    @(s+bart'H'@[r'e'@(t'l'@[T'l'@[i'o'\n    @(w+lisa' '@(x'w'@(y'o'@[1'r'@{a'l'@[2'd'@[k'!'"
+    txt =
+      "  \n*rga#1UQ8p+bart@1UQ8yk+lisa:0!\n    @(s+bart'H'@[r'e'@(t'l'@[T'l'@[i'o'\n    @(w+lisa' '@(x'w'@(y'o'@[1'r'@{a'l'@[2'd'@[k'!'"
+
     {:ok, frame} = Frame.parse(txt)
     assert length(frame) == 13
 
@@ -15,7 +17,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8yk+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == []
 
     op = Enum.at(frame, 1)
@@ -23,7 +25,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8s+bart")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["H"]
 
     op = Enum.at(frame, 2)
@@ -31,7 +33,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8sr+bart")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["e"]
 
     op = Enum.at(frame, 3)
@@ -39,7 +41,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8t+bart")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["l"]
 
     op = Enum.at(frame, 4)
@@ -47,7 +49,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8tT+bart")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["l"]
 
     op = Enum.at(frame, 5)
@@ -55,7 +57,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8ti+bart")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["o"]
 
     op = Enum.at(frame, 6)
@@ -63,7 +65,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8w+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == [" "]
 
     op = Enum.at(frame, 7)
@@ -71,7 +73,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8x+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["w"]
 
     op = Enum.at(frame, 8)
@@ -79,7 +81,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8y+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["o"]
 
     op = Enum.at(frame, 9)
@@ -87,7 +89,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8y1+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["r"]
 
     op = Enum.at(frame, 10)
@@ -95,7 +97,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8y1a+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["l"]
 
     op = Enum.at(frame, 11)
@@ -103,7 +105,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8y2+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["d"]
 
     op = Enum.at(frame, 12)
@@ -111,7 +113,7 @@ defmodule FrameTest do
     assert op.type == rga
     assert op.object == bart
     assert {:ok, {op.event, ""}} == UUID.parse("1UQ8yk+lisa")
-    assert UUID.is_zero?(op.location)
+    assert UUID.zero?(op.location)
     assert op.atoms == ["!"]
   end
 
@@ -123,8 +125,8 @@ defmodule FrameTest do
     assert op1.term == :header
     assert op1.type == UUID.name("lww")
     assert op1.object == UUID.name("test1")
-    assert UUID.is_zero?(op1.event)
-    assert UUID.is_zero?(op1.location)
+    assert UUID.zero?(op1.event)
+    assert UUID.zero?(op1.location)
     assert op1.atoms == []
 
     assert op2.term == :raw
@@ -144,12 +146,12 @@ defmodule FrameTest do
   end
 
   test "decode error" do
-   {:error, _} = Frame.parse("XX")
+    {:error, _} = Frame.parse("XX")
   end
 
   test "split frame" do
     txt = "*lww#test1!\n    *lww#test1@time:a'A';"
-    split_frame = Frame.parse!(txt) |> Frame.split
+    split_frame = Frame.parse!(txt) |> Frame.split()
     assert [f1 | [f2 | []]] = split_frame
 
     assert length(f1) == 1
@@ -157,8 +159,8 @@ defmodule FrameTest do
     assert op1.term == :header
     assert op1.type == UUID.name("lww")
     assert op1.object == UUID.name("test1")
-    assert UUID.is_zero?(op1.event)
-    assert UUID.is_zero?(op1.location)
+    assert UUID.zero?(op1.event)
+    assert UUID.zero?(op1.location)
     assert op1.atoms == []
 
     assert length(f2) == 1
