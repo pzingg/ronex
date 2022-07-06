@@ -1,6 +1,9 @@
 defmodule RgaTest do
   use ExUnit.Case
-  doctest Crdt.Rga
+
+  alias Crdt.Rga
+
+  doctest Rga
 
   test "ron-test 05-rga empty state + an op" do
     st1 = "*rga#text_0a!"
@@ -28,7 +31,7 @@ defmodule RgaTest do
     st4 = "*rga#text_sp@1:0!@'A'"
     up4 = "*rga#text_sp@2:1!:0'B'"
     # a merged state
-    out4 = "*rga#text_sp@2:0!	@1 'A' ,	@2 'B' ,"
+    out4 = "*rga#text_sp@2:0!	@1Crdt. 'A' ,	@2 'B' ,"
     test_rga(4, st4, up4, out4)
   end
 
@@ -181,9 +184,9 @@ defmodule RgaTest do
     updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
     expected = output = Frame.parse!(out) |> Frame.split()
 
-    final = red = Crdt.Rga.reduce(state, updates)
-    # final = Crdt.Rga.map(red)
-    # expected = Crdt.Rga.map(output)
+    final = red = Rga.reduce(state, updates)
+    # final = Rga.map(red)
+    # expected = Rga.map(output)
 
     if final != expected do
       IO.puts("#{i}: state #{inspect(state)}")

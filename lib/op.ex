@@ -1,9 +1,15 @@
 defmodule Op do
-  defstruct type: nil, object: nil, event: UUID.now(), location: nil, atoms: [], term: :raw
+  defstruct type: nil,
+            object: nil,
+            event: UUID.now(),
+            location: nil,
+            reference: nil,
+            atoms: [],
+            term: :raw
 
   def parse(str, %Op{type: prev_ty, object: prev_obj, event: prev_ev, location: prev_loc}) do
     str = String.trim_leading(str)
-    prefixes = ["#", "@", ":", "'", "!", "^", "=", ">", ",", ";", "?"]
+    prefixes = ["#", "@", "<", ":", "'", "!", "^", "=", ">", ",", ";", "?"]
 
     # type
     case spec_uuid(str, "*", prev_ty, prev_loc, prefixes) do
@@ -24,55 +30,68 @@ defmodule Op do
                 prefixes = Enum.slice(prefixes, 1..-1)
                 str = String.trim_leading(str)
 
-                # location
-                case spec_uuid(str, ":", prev_loc, my_ev, prefixes) do
-                  {:ok, {my_loc, str}} ->
+                # reference. use previous event's UUID as default
+                case spec_uuid(str, "<", prev_ev, my_obj, prefixes) do
+                  {:ok, {my_ref, str}} ->
+                    my_ref = as_event_or_derived(my_ref)
+                    prefixes = Enum.slice(prefixes, 1..-1)
                     str = String.trim_leading(str)
 
-                    # atoms
-                    atoms_res =
-                      case str do
-                        "'" <> _ -> atoms(str, my_loc)
-                        "^" <> _ -> atoms(str, my_loc)
-                        "=" <> _ -> atoms(str, my_loc)
-                        ">" <> _ -> atoms(str, my_loc)
-                        "," <> _ -> {:ok, {[], str}}
-                        ";" <> _ -> {:ok, {[], str}}
-                        "!" <> _ -> {:ok, {[], str}}
-                        "?" <> _ -> {:ok, {[], str}}
-                        _ -> {:ok, {[], str}}
-                      end
-
-                    case atoms_res do
-                      {:ok, {my_atoms, str}} ->
+                    # location
+                    case spec_uuid(str, ":", prev_loc, my_ev, prefixes) do
+                      {:ok, {my_loc, str}} ->
                         str = String.trim_leading(str)
 
-                        # terminator
-                        {my_term, str} =
+                        # atoms
+                        atoms_res =
                           case str do
-                            ";" <> cdr -> {:raw, cdr}
-                            "!" <> cdr -> {:header, cdr}
-                            "?" <> cdr -> {:query, cdr}
-                            "," <> cdr -> {:reduced, cdr}
-                            _ -> {:reduced, str}
+                            "'" <> _ -> atoms(str, my_loc)
+                            "^" <> _ -> atoms(str, my_loc)
+                            "=" <> _ -> atoms(str, my_loc)
+                            ">" <> _ -> atoms(str, my_loc)
+                            "," <> _ -> {:ok, {[], str}}
+                            ";" <> _ -> {:ok, {[], str}}
+                            "!" <> _ -> {:ok, {[], str}}
+                            "?" <> _ -> {:ok, {[], str}}
+                            _ -> {:ok, {[], str}}
                           end
 
-                        op = %Op{
-                          type: my_ty,
-                          object: my_obj,
-                          event: my_ev,
-                          location: my_loc,
-                          atoms: my_atoms,
-                          term: my_term
-                        }
+                        case atoms_res do
+                          {:ok, {my_atoms, str}} ->
+                            str = String.trim_leading(str)
 
-                        {:ok, {op, String.trim_leading(str)}}
+                            # terminator
+                            {my_term, str} =
+                              case str do
+                                ";" <> cdr -> {:raw, cdr}
+                                "!" <> cdr -> {:header, cdr}
+                                "?" <> cdr -> {:query, cdr}
+                                "," <> cdr -> {:reduced, cdr}
+                                _ -> {:reduced, str}
+                              end
 
+                            op = %Op{
+                              type: my_ty,
+                              object: my_obj,
+                              event: my_ev,
+                              reference: my_ref,
+                              location: my_loc,
+                              atoms: my_atoms,
+                              term: my_term
+                            }
+
+                            {:ok, {op, String.trim_leading(str)}}
+
+                          err ->
+                            err
+                        end
+
+                      # location
                       err ->
                         err
                     end
 
-                  # location
+                  # reference
                   err ->
                     err
                 end
@@ -190,26 +209,46 @@ defmodule Op do
 end
 
 defimpl String.Chars, for: Op do
-  def to_string(%Op{type: ty, event: ev, object: obj, location: loc, term: term, atoms: atoms}) do
-    "*" <>
-      UUID.format_as_zipped_name(ty) <>
-      "#" <>
-      UUID.format_as_zipped_name(obj) <>
-      "@" <>
-      UUID.format_as_zipped_name(ev) <>
-      ":" <>
-      UUID.format_as_zipped_name(loc) <>
+  def to_string(%Op{
+        type: ty,
+        object: obj,
+        event: ev,
+        reference: ref,
+        location: loc,
+        term: term,
+        atoms: atoms
+      }) do
+    ref_str =
+      if is_nil(ref) || UUID.zero?(ref) do
+        ""
+      else
+        "<" <> UUID.format_as_zipped_name(ref)
+      end
+
+    atom_str =
       Enum.reduce(atoms, "", fn
         i, acc when is_integer(i) -> acc <> "=" <> Kernel.to_string(i)
         f, acc when is_float(f) -> acc <> "^" <> Kernel.to_string(f)
         u = %UUID{}, acc -> acc <> "=" <> Kernel.to_string(u)
         s, acc -> acc <> "'" <> s <> "'"
-      end) <>
+      end)
+
+    term_str =
       case term do
         :raw -> ";"
         :reduced -> ","
         :header -> "!"
         :query -> "?"
       end
+
+    "*" <>
+      UUID.format_as_zipped_name(ty) <>
+      "#" <>
+      UUID.format_as_zipped_name(obj) <>
+      "@" <>
+      UUID.format_as_zipped_name(ev) <>
+      ref_str <>
+      ":" <>
+      UUID.format_as_zipped_name(loc) <> atom_str <> term_str
   end
 end

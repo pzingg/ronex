@@ -26,17 +26,34 @@ defmodule UUID do
     %UUID{hi: @never_hi, lo: 0, scheme: :event}
   end
 
-  def now(), do: %UUID{hi: 0, lo: 0, scheme: :event}
-  def now_from(origin), do: %UUID{hi: 0, lo: origin, scheme: :event}
+  def now(months \\ 0, seq \\ 0) when is_integer(months) and is_integer(seq) do
+    if seq < 0 || seq > 63 do
+      raise "event sequence out of range"
+    end
 
-  def timestamp(dt_utc \\ nil) do
-    value = encode_calendar(dt_utc || DateTime.utc_now())
+    months =
+      cond do
+        months < 0 -> 0
+        months > 2047 -> raise "past the end of time"
+        true -> months
+      end
+
+    %UUID{hi: months <<< 48 ||| seq, lo: 0, scheme: :event}
+  end
+
+  def now_from(origin, months \\ 0, seq \\ 0) do
+    event = now(months, seq)
+    %UUID{event | lo: origin}
+  end
+
+  def timestamp(dt_utc \\ nil, seq \\ 0) do
+    value = encode_calendar(dt_utc || DateTime.utc_now(), seq)
     %UUID{hi: value, lo: 0, scheme: :event}
   end
 
-  def timestamp_from(origin, dt_utc \\ nil) do
-    value = encode_calendar(dt_utc || DateTime.utc_now())
-    %UUID{hi: value, lo: origin, scheme: :event}
+  def timestamp_from(origin, dt_utc \\ nil, seq \\ 0) do
+    event = timestamp(dt_utc, seq)
+    %UUID{event | lo: origin}
   end
 
   def name(name, variety \\ 0) do
@@ -56,20 +73,26 @@ defmodule UUID do
     end
   end
 
-  def compare(%UUID{hi: hi1, lo: lo1}, %UUID{hi: hi2, lo: lo2}) do
+  @doc """
+  Compare `:hi` component, e.g. for comparing timestamps.
+  """
+  def compare_hi(%UUID{hi: hi1}, %UUID{hi: hi2}) do
     cond do
-      hi1 == hi2 ->
+      hi1 == hi2 -> :eq
+      hi1 < hi2 -> :lt
+      true -> :gt
+    end
+  end
+
+  def compare(uuid1, uuid2) do
+    case compare_hi(uuid1, uuid2) do
+      :eq ->
         cond do
-          lo1 == lo2 -> :eq
-          lo1 < lo2 -> :lt
+          uuid1.lo == uuid2.lo -> :eq
+          uuid1.lo < uuid2.lo -> :lt
           true -> :gt
         end
-
-      hi1 < hi2 ->
-        :lt
-
-      true ->
-        :gt
+      cmp -> cmp
     end
   end
 
@@ -357,27 +380,42 @@ defmodule UUID do
     end
   end
 
-  def encode_calendar(dt_utc) do
-    %{
-      year: year,
-      month: month,
-      day: day,
-      hour: hour,
-      minute: minute,
-      second: second,
-      microsecond: {microsecond, _precision}
-    } = DateTime.truncate(dt_utc, :microsecond)
-
-    if year < 2010 do
-      0
-    else
-      i = (year - 2010) * 12 + month - 1
-      i = i <<< 6 ||| day - 1
-      i = i <<< 6 ||| hour
-      i = i <<< 6 ||| minute
-      i = i <<< 6 ||| second
-      i <<< 24 ||| microsecond
+  def encode_calendar(
+        %DateTime{
+          year: year,
+          month: month,
+          day: day,
+          hour: hour,
+          minute: minute,
+          second: second,
+          microsecond: {microsecond, _precision}
+        },
+        seq \\ 0
+      )
+      when is_integer(seq) do
+    if seq < 0 || seq > 63 do
+      raise "calendar sequence out of range"
     end
+
+    i =
+      if year < 2010 do
+        0
+      else
+        months = (year - 2010) * 12 + month - 1
+
+        if months > 2047 do
+          raise "past the end of time"
+        end
+
+        i = months <<< 6 ||| day - 1
+        i = i <<< 6 ||| hour
+        i = i <<< 6 ||| minute
+        i = i <<< 6 ||| second
+        i = i <<< 6 ||| microsecond
+        i <<< 18
+      end
+
+    i ||| seq
   end
 
   @doc """
@@ -399,11 +437,15 @@ defmodule UUID do
   end
 
   @doc """
-  Formats a "zipped" UUID without the scheme separator. Used
+  Formats a "zipped" UUID, possibly without the scheme separator. Used
   for formatting Ops, where the known context implies the scheme.
   """
-  def format_as_zipped_name(%UUID{} = uuid) do
+  def format_as_zipped_name(%UUID{lo: 0} = uuid) do
     format_with_context(%UUID{uuid | scheme: :name, variety: 0})
+  end
+
+  def format_as_zipped_name(%UUID{} = uuid) do
+    format_with_context(%UUID{uuid | variety: 0})
   end
 
   @doc """

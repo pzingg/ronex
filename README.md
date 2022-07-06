@@ -91,6 +91,7 @@ Besides the Base64 characters, other punctuation marks have special meanings:
 | \*   | Op      | Quant   | Start of Op's data type UUID ("lww", "rga", "set", etc.)       |
 | \#   | Op      | Quant   | Start of Op's object UUID                                      |
 | \@   | Op      | Quant   | Start of Op's event UUID                                       |
+| \<   | Op      | Quant   | Start of Op's reference (predecessor) event UUID               |
 | \:   | Op      | Quant   | Start of Op's location UUID                                    |
 | \'   | Op      | Atom    | Start and end delimiter for string atom                        |
 | \=   | Op      | Atom    | Start of integer atom                                          |

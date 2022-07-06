@@ -1,7 +1,10 @@
 defmodule LwwTest do
   use ExUnit.Case
   use ExUnit.Parameterized
-  doctest Crdt.Lww
+
+  alias Crdt.Lww
+
+  doctest Lww
 
   test_with_params "ron-test 01-lww-basic", fn i, st, upd, out -> test_lww(i, st, upd, out) end do
     [
@@ -29,9 +32,9 @@ defmodule LwwTest do
     updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
     output = Frame.parse!(out)
 
-    red = Crdt.Lww.reduce(state, updates)
-    final = Crdt.Lww.map(red)
-    expected = Crdt.Lww.map(output)
+    red = Lww.reduce(state, updates)
+    final = Lww.map(red)
+    expected = Lww.map(output)
 
     if final != expected do
       IO.puts("#{i}: red #{Frame.format(red)}")

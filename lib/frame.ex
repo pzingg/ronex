@@ -26,6 +26,7 @@ defmodule Frame do
         %Op{
           type: UUID.zero(),
           event: UUID.zero(),
+          reference: UUID.zero(),
           object: UUID.zero(),
           location: UUID.zero()
         }

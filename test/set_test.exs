@@ -1,7 +1,10 @@
 defmodule SetTest do
   use ExUnit.Case, async: false
   use ExUnit.Parameterized
-  doctest Crdt.Set
+
+  alias Crdt.Set, as: CSet
+
+  doctest CSet
 
   test_with_params "ron-test 04-set-basic", fn i, st, upd, out -> test_set(i, st, upd, out) end do
     [
@@ -40,9 +43,9 @@ defmodule SetTest do
     updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
     output = Frame.parse!(out)
 
-    red = Crdt.Set.reduce(state, updates)
-    final = Crdt.Set.map(red)
-    expected = Crdt.Set.map(output)
+    red = CSet.reduce(state, updates)
+    final = CSet.map(red)
+    expected = CSet.map(output)
 
     if final != expected do
       IO.puts("#{i}: red #{Frame.format(red)}")

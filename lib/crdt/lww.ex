@@ -22,11 +22,8 @@ defmodule Crdt.Lww do
       %Op{term: :query}, acc ->
         acc
 
-      %Op{location: loc, atoms: [val]}, acc when is_float(val) ->
-        Map.put_new(acc, loc, Float.round(val, 5))
-
       %Op{location: loc, atoms: [val]}, acc ->
-        Map.put_new(acc, loc, val)
+        Map.put_new(acc, loc, Crdt.round_5(val))
 
       _op, acc ->
         acc

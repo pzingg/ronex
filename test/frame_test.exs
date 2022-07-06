@@ -172,4 +172,27 @@ defmodule FrameTest do
     assert op2.location == UUID.name("a")
     assert op2.atoms == ["A"]
   end
+
+  test "decode reference" do
+    txt = "*lww#test1!\n    *lww#test1@2+alice<1+bob:a'A';"
+    {:ok, frame} = Frame.parse(txt)
+    assert [op1 | [op2 | []]] = frame
+
+    assert op1.term == :header
+    assert op1.type == UUID.name("lww")
+    assert op1.object == UUID.name("test1")
+    assert UUID.zero?(op1.event)
+    assert UUID.zero?(op1.location)
+    assert op1.atoms == []
+
+    assert op2.term == :raw
+    assert op2.type == UUID.name("lww")
+    assert op2.object == UUID.name("test1")
+    assert {:ok, {op2.event, ""}} == UUID.parse("2+alice")
+    assert {:ok, {op2.reference, ""}} == UUID.parse("1+bob")
+    assert op2.location == UUID.name("a")
+    assert op2.atoms == ["A"]
+    assert to_string(op2) == "*lww#test1@2+alice<1+bob:a'A';"
+  end
+
 end
