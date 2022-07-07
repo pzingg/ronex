@@ -84,14 +84,20 @@ defmodule UUID do
     end
   end
 
+  @doc """
+  Compare `:lo` component, e.g. for comparing authors.
+  """
+  def compare_lo(%UUID{lo: lo1}, %UUID{lo: lo2}) do
+    cond do
+      lo1 == lo2 -> :eq
+      lo1 < lo2 -> :lt
+      true -> :gt
+    end
+  end
+
   def compare(uuid1, uuid2) do
     case compare_hi(uuid1, uuid2) do
-      :eq ->
-        cond do
-          uuid1.lo == uuid2.lo -> :eq
-          uuid1.lo < uuid2.lo -> :lt
-          true -> :gt
-        end
+      :eq -> compare_lo(uuid1, uuid2)
       cmp -> cmp
     end
   end

@@ -101,13 +101,13 @@ defmodule Frame do
     str
   end
 
-  def format(frame) do
+  def format(frame, opts \\ []) do
     if frame == [] do
       "<empty>\n"
     else
       Enum.reduce(frame, "", fn
-        op, "" -> Kernel.to_string(op) <> "\n"
-        op, acc -> acc <> " " <> Kernel.to_string(op) <> "\n"
+        op, "" -> Op.format(op, opts) <> "\n"
+        op, acc -> acc <> " " <> Op.format(op, opts) <> "\n"
       end)
     end
   end

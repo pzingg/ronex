@@ -5,7 +5,8 @@ defmodule Op do
             location: nil,
             reference: nil,
             atoms: [],
-            term: :raw
+            term: :raw,
+            next: nil
 
   def parse(str, %Op{type: prev_ty, object: prev_obj, event: prev_ev, location: prev_loc}) do
     str = String.trim_leading(str)
@@ -30,8 +31,8 @@ defmodule Op do
                 prefixes = Enum.slice(prefixes, 1..-1)
                 str = String.trim_leading(str)
 
-                # reference. use previous event's UUID as default
-                case spec_uuid(str, "<", prev_ev, my_obj, prefixes) do
+                # reference. use the current event's UUID as default
+                case spec_uuid(str, "<", my_ev, my_obj, prefixes) do
                   {:ok, {my_ref, str}} ->
                     my_ref = as_event_or_derived(my_ref)
                     prefixes = Enum.slice(prefixes, 1..-1)
@@ -147,7 +148,7 @@ defmodule Op do
           atoms(cdr, prev_uuid, [val | prev])
 
         ?' ->
-          {str, cdr} = string(cdr, {:def, ""})
+          {str, cdr} = parse_string(cdr, {:def, ""})
           atoms(cdr, prev_uuid, [str | prev])
 
         _ when prev == [] ->
@@ -178,7 +179,7 @@ defmodule Op do
     end
   end
 
-  defp string(txt, {state, str}) do
+  defp parse_string(txt, {state, str}) do
     car = String.first(txt) |> :binary.first()
     cdr = String.slice(txt, 1..-1)
 
@@ -187,37 +188,39 @@ defmodule Op do
         {str, cdr}
 
       ?' when state == :esc ->
-        string(cdr, {:def, str <> "'"})
+        parse_string(cdr, {:def, str <> "'"})
 
       ?\\ when state == :def ->
-        string(cdr, {:esc, str})
+        parse_string(cdr, {:esc, str})
 
       ?\\ when state == :esc ->
-        string(cdr, {:def, str <> "\\"})
+        parse_string(cdr, {:def, str <> "\\"})
 
       _ when state == :def ->
-        string(cdr, {:def, str <> String.first(txt)})
+        parse_string(cdr, {:def, str <> String.first(txt)})
 
       ?n when state == :esc ->
-        string(cdr, {:def, str <> "\n"})
+        parse_string(cdr, {:def, str <> "\n"})
 
       ?t when state == :esc ->
-        string(cdr, {:def, str <> "\t"})
+        parse_string(cdr, {:def, str <> "\t"})
         # XXX: more escape seqs
     end
   end
-end
 
-defimpl String.Chars, for: Op do
-  def to_string(%Op{
-        type: ty,
-        object: obj,
-        event: ev,
-        reference: ref,
-        location: loc,
-        term: term,
-        atoms: atoms
-      }) do
+  def format(
+        %Op{
+          type: ty,
+          object: obj,
+          event: ev,
+          reference: ref,
+          location: loc,
+          term: term,
+          atoms: atoms,
+          next: next
+        },
+        opts \\ []
+      ) do
     ref_str =
       if is_nil(ref) || UUID.zero?(ref) do
         ""
@@ -241,6 +244,13 @@ defimpl String.Chars, for: Op do
         :query -> "?"
       end
 
+    next_str =
+      if !is_nil(next) && Keyword.get(opts, :jumps, false) do
+        "next:" <> UUID.format_as_zipped_name(next)
+      else
+        ""
+      end
+
     "*" <>
       UUID.format_as_zipped_name(ty) <>
       "#" <>
@@ -249,6 +259,10 @@ defimpl String.Chars, for: Op do
       UUID.format_as_zipped_name(ev) <>
       ref_str <>
       ":" <>
-      UUID.format_as_zipped_name(loc) <> atom_str <> term_str
+      UUID.format_as_zipped_name(loc) <> atom_str <> next_str <> term_str
   end
+end
+
+defimpl String.Chars, for: Op do
+  def to_string(op), do: Op.format(op)
 end

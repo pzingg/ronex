@@ -19,7 +19,6 @@ defmodule Crdt do
           %Op{term: :query}, acc -> acc
           %Op{} = op, acc -> [op | acc]
         end)
-        |> Enum.sort(module)
 
       if prune do
         {min, max} =
@@ -36,18 +35,15 @@ defmodule Crdt do
             min.location
           end
 
-        header = %Op{header |
-          event: max.event,
-          location: loc,
-          term: :header,
-          atoms: []
-        }
+        header = %Op{header | event: max.event, location: loc, term: :header, atoms: []}
 
-            {_, reversed_ops} =
-          Enum.reduce(ops, {nil, []}, fn op, acc -> prune(module, op, acc) end)
-        [header | Enum.reverse(reversed_ops)]
+        {_, pruned_ops} =
+          Enum.sort(ops, module)
+          |> Enum.reduce({nil, []}, fn op, acc -> prune(module, op, acc) end)
+
+        [header | Enum.reverse(pruned_ops)]
       else
-        [header | ops]
+        [header | Enum.reverse(ops)]
       end
     else
       _ -> []

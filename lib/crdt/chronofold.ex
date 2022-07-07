@@ -21,9 +21,11 @@ defmodule Crdt.Chronofold do
   """
   def author(str) do
     len = String.length(str)
+
     if len == 0 || len > 10 do
       raise "author must be a string of length between 1 and 10"
     end
+
     {:ok, {auth_uuid, ""}} = UUID.parse(str)
     auth_uuid.lo
   end
@@ -40,13 +42,14 @@ defmodule Crdt.Chronofold do
   end
 
   def log_ops(state, _auth, opts \\ []) do
-    ops = Enum.reduce(state, [], fn
-      %Op{term: :header}, acc -> acc
-      %Op{term: :query}, acc -> acc
-      %Op{event: %UUID{lo: 0}}, acc -> acc
-      op, acc -> [op | acc]
-    end)
-    |> Enum.sort(fn a, b -> UUID.less_than_or_equal_to?(a.event, b.event) end)
+    ops =
+      Enum.reduce(state, [], fn
+        %Op{term: :header}, acc -> acc
+        %Op{term: :query}, acc -> acc
+        %Op{event: %UUID{lo: 0}}, acc -> acc
+        op, acc -> [op | acc]
+      end)
+      |> Enum.reverse()
 
     case Keyword.get(opts, :k) do
       nil -> ops
@@ -56,11 +59,11 @@ defmodule Crdt.Chronofold do
 
   def first_auth!(state) do
     case Enum.find_value(state, fn
-      %Op{term: :header} -> false
-      %Op{term: :query} -> false
-      %Op{event: %UUID{lo: 0}} -> false
-      %Op{event: %UUID{lo: auth}} -> auth
-    end) do
+           %Op{term: :header} -> false
+           %Op{term: :query} -> false
+           %Op{event: %UUID{lo: 0}} -> false
+           %Op{event: %UUID{lo: auth}} -> auth
+         end) do
       nil -> raise "no authors in state"
       auth -> auth
     end
@@ -87,22 +90,15 @@ defmodule Crdt.Chronofold do
   def event_matches?(%Op{event: ev}, reference), do: UUID.equals?(ev, reference)
   def event_matches?(_, _reference), do: false
 
-  def preemptive_sibling_event?(%Op{term: :header}, _reference, _event), do: false
-  def preemptive_sibling_event?(%Op{term: :query}, _reference, _event), do: false
-  def preemptive_sibling_event?(%Op{event: ev, reference: parent_ev}, parent, child) do
-    UUID.equals?(parent_ev, parent) && UUID.compare_hi(ev, child) == :gt
-  end
-  def preemptive_sibling_event?(_, _reference, _event), do: false
-
   @doc """
-  `ref` is a function from `T` to `T`.
+  `ref` is a function from `T` to `Op`.
   """
   def ref(state, reference) do
     if reference.lo == 0 do
       nil
     else
       case Enum.find(state, &event_matches?(&1, reference)) do
-        nil -> raise "ref #{reference} not found in state"
+        nil -> nil
         %Op{event: ev} -> ev
       end
     end
@@ -110,15 +106,21 @@ defmodule Crdt.Chronofold do
 
   def refs(state) do
     Enum.reduce(state, [], fn
-      %Op{term: :header}, acc -> acc
-      %Op{term: :query}, acc -> acc
-      %Op{reference: %UUID{lo: 0}}, acc -> acc
+      %Op{term: :header}, acc ->
+        acc
+
+      %Op{term: :query}, acc ->
+        acc
+
+      %Op{reference: %UUID{lo: 0}}, acc ->
+        acc
+
       %Op{reference: parent}, acc ->
         case ref(state, parent) do
           nil -> acc
           r -> [r | acc]
         end
-      end)
+    end)
     |> Enum.reverse()
   end
 
@@ -127,7 +129,10 @@ defmodule Crdt.Chronofold do
   """
   def val(%Op{term: :header}), do: nil
   def val(%Op{term: :query}), do: nil
-  def val(%Op{atoms: [val]}), do: Crdt.round_5(val)
+  def val(%Op{atoms: [0]}), do: :root
+  def val(%Op{atoms: [-1]}), do: :del
+  def val(%Op{atoms: [val]}) when is_binary(val), do: val
+  def val(_), do: nil
 
   def vals(state) do
     Enum.reduce(state, [], fn op, acc ->
@@ -140,10 +145,19 @@ defmodule Crdt.Chronofold do
   end
 
   def reduce(state, updates) do
-    [header | [root | rest]] = Crdt.merge(__MODULE__, state, updates, false)
-    # Root is always self-referential
-    root = %Op{root | reference: root.event}
-    [header | [root | rest]]
+    all_ops = state ++ List.flatten(updates)
+
+    case all_ops do
+      [header | [%Op{event: %UUID{lo: auth}} = root | rest]] ->
+        # Root is always self-referential
+        root = %Op{root | reference: root.event}
+
+        [header | [root | rest]]
+        |> log_ops(auth)
+
+      empty ->
+        empty
+    end
   end
 
   @doc """
@@ -163,16 +177,15 @@ defmodule Crdt.Chronofold do
   their CT subtrees.
   """
   def map(state) do
-    auth = first_auth!(state)
-    {final, cfd} = log_ops(state, auth)
-    |> Enum.reduce({[], []}, fn op, acc -> receive_op(op, acc) end)
+    Enum.reduce(state, {[], []}, fn op, acc -> receive_op(op, acc) end)
   end
 
   def map_result(cfd) do
     Enum.reduce(cfd, "", fn
       {ch, _ndx}, acc when is_binary(ch) -> acc <> ch
-      {0, _ndx}, acc -> ""
-      {_, _ndx}, acc -> String.slice(acc, -1, 1) end)
+      {:root, _ndx}, _acc -> ""
+      {:del, _ndx}, acc -> String.slice(acc, 0, String.length(acc) - 1)
+    end)
   end
 
   def format(cfd) do
@@ -182,51 +195,113 @@ defmodule Crdt.Chronofold do
   def receive_op(%Op{term: :header}, acc), do: acc
   def receive_op(%Op{term: :query}, acc), do: acc
   def receive_op(%Op{event: %UUID{lo: 0}}, acc), do: acc
-  def receive_op(%Op{atoms: [val], event: ev, reference: parent} = op, {state, cfd}) do
-    IO.puts("receive_op ev #{ev} parent #{parent} val #{val}")
-    if UUID.zero?(parent) do
+
+  def receive_op(%Op{event: ev, reference: parent} = op, {state, cfd}) do
+    value = val(op)
+    IO.puts("receive_op ev #{ev} parent #{parent} val #{value}")
+
+    if is_nil(value) || UUID.zero?(parent) do
+      IO.puts("no change to state")
       {state, cfd}
     else
-      {head, rest} =
-        if val == 0 do
+      {head, rest, next} =
+        if value == :root do
           # Root
-          {state, []}
+          {state, [], nil}
         else
-          split_at_parent!(state, parent, ev)
+          split_at_parent!(state, ev, parent)
         end
 
-      val = Crdt.round_5(val)
       ndx = Enum.count(head)
-      cfd = insert_tuple(cfd, val, ndx)
+      cfd = insert_tuple(cfd, value, ndx)
 
-      state = head ++ [op] ++ rest
+      state = head ++ [%Op{op | next: next}] ++ rest
+      IO.puts("state now #{Frame.format(state, jumps: true)}")
       {state, cfd}
     end
   end
+
   def receive_op(_, _, acc), do: acc
 
-  def insert_tuple(cfd, val, ndx) do
+  def insert_tuple(cfd, value, ndx) do
     {head, rest} = Enum.split(cfd, ndx)
-    head ++ [{val, ndx+1}] ++ rest
+    head ++ [{value, ndx + 1}] ++ rest
   end
 
-  def parent_index!(state, parent) do
-    case Enum.find_index(state, &event_matches?(&1, parent)) do
-      nil -> raise "parent ref #{parent} not found in state #{Frame.format(state)}"
-      i -> i
+  def split_at_parent!(state, ev, parent) do
+    case Enum.reduce(state, {[], [], nil}, fn %Op{event: ts} = op, {head, tail, last} ->
+           ts_cmp = UUID.compare_hi(ts, ev)
+
+           cond do
+             val(op) == :root ->
+               {head ++ [op], tail, ts}
+
+             is_nil(last) ->
+               {head, tail ++ [op], nil}
+
+             UUID.equals?(last, parent) && UUID.compare_lo(last, ev) == :eq ->
+               {head, tail ++ [op], nil}
+
+             ts_cmp == :lt ->
+               {head ++ [op], tail, ts}
+
+             true ->
+               {head, tail ++ [op], nil}
+           end
+         end) do
+      {state, [], _} ->
+        IO.puts("adding to tail")
+        {state, [], nil}
+
+      {head, rest, _} ->
+        {head, next} = set_next_if_changed_author(head, ev, parent)
+
+        {sibs, tail} =
+          Enum.split_with(rest, fn op -> preemptive_sibling_event?(op, ev, parent) end)
+
+        IO.puts("head count #{Enum.count(head)} sib count #{Enum.count(sibs)}")
+        {head ++ sibs, tail, next}
     end
   end
 
-  def split_at_parent!(state, parent, child) do
-    i = parent_index!(state, parent) + 1
-    {head, rest} = Enum.split(state, i)
-    {sibs, tail} = Enum.split_while(rest, &preemptive_sibling_event?(&1, parent, child))
-    IO.puts("head count #{i} sib count #{Enum.count(sibs)}:")
-    IO.puts("head #{Frame.format(head)}")
-    IO.puts("sibs #{Frame.format(sibs)}")
-    IO.puts("tail #{Frame.format(tail)}")
-    {head ++ sibs, tail}
+  def set_next_if_changed_author(head, ev, parent) do
+    case List.last(head) do
+      nil ->
+        head
+
+      %Op{event: last_ev} ->
+        if UUID.compare_lo(last_ev, ev) == :eq do
+          {head, nil}
+        else
+          case Enum.reduce(head, {[], :not_found}, fn
+                 op, {state, %Op{} = next} -> {state ++ [op], next}
+                 %Op{event: ^parent} = op, {state, _} -> {state ++ [%Op{op | next: ev}], :found}
+                 %Op{event: next} = op, {state, :found} -> {state ++ [op], next}
+                 op, {state, next} -> {state ++ [op], next}
+               end) do
+            {state, %Op{} = next} -> {state, next}
+            {state, _} -> {state, nil}
+          end
+        end
+    end
   end
+
+  def preemptive_sibling_event?(%Op{term: :header}, _ev, _parent), do: false
+  def preemptive_sibling_event?(%Op{term: :query}, _ev, _parent), do: false
+
+  def preemptive_sibling_event?(%Op{event: sib_ev, reference: sib_parent} = op, ev, parent) do
+    if !UUID.equals?(sib_parent, parent) do
+      false
+    else
+      case UUID.compare_hi(sib_ev, ev) do
+        :eq -> val(op) == :del
+        :lt -> true
+        _ -> false
+      end
+    end
+  end
+
+  def preemptive_sibling_event?(_, _reference, _event), do: false
 
   def compare_primary(a, b) do
     cond do
