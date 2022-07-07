@@ -15,6 +15,160 @@ defmodule Crdt.Chronofold do
   contains the weave and thus any version of the text.
   """
 
+  ####### LogOp stuff
+
+  alias __MODULE__
+
+  defstruct log: [], notes: nil, andx_map: nil, ref_map: nil
+
+  def new() do
+    %Chronofold{andx_map: MapSet.new(), ref_map: %{}}
+  end
+
+  def ref_ndx(%LogOp{auth: auth, andx: andx}, %Chronofold{notes: notes}) do
+    case Map.get(notes, {auth, andx}) do
+      nil -> nil
+      note -> Keyword.get(note, :ref)
+    end
+  end
+
+  def next_ndx(%LogOp{auth: auth, andx: andx}, %Chronofold{notes: notes}) do
+    case Map.get(notes, {auth, andx}) do
+      nil -> nil
+      note -> Keyword.get(note, :next)
+    end
+  end
+
+  def auth_note(%LogOp{auth: auth, andx: andx}, %Chronofold{notes: notes}) do
+    case Map.get(notes, {auth, andx}) do
+      nil -> nil
+      note -> Keyword.get(note, :auth)
+    end
+  end
+
+  def register_op(
+        %Chronofold{log: log, andx_map: andx_map, ref_map: ref_map} = cf,
+        %UUID{hi: andx, lo: auth},
+        %UUID{hi: ref_andx, lo: ref_auth},
+        val
+      ) do
+    auth = parse_auth(auth)
+    andx = parse_andx(andx)
+    op = %LogOp{auth: auth, andx: andx, val: val}
+
+    ref_auth = parse_auth(ref_auth)
+    ref_andx = parse_andx(ref_andx)
+
+    %Chronofold{
+      cf
+      | log: [op | log],
+        andx_map: MapSet.put(andx_map, andx),
+        ref_map: Map.put(ref_map, {auth, andx}, {ref_auth, ref_andx})
+    }
+  end
+
+  defp parse_auth(auth), do: UUID.u64_to_string(auth)
+  defp parse_andx(andx), do: UUID.u64_to_string(andx) |> String.to_integer()
+
+  def finalize_log(%Chronofold{log: log, andx_map: andx_map, ref_map: ref_map} = cf) do
+    # Convert to 1-based map, sorted by original times
+    andx_map =
+      MapSet.to_list(andx_map)
+      |> Enum.sort()
+      |> Enum.with_index(1)
+      |> Enum.into(%{})
+
+    # Update andx in log, add ndx
+    log =
+      Enum.reverse(log)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {%LogOp{andx: old_andx} = op, ndx} ->
+        %LogOp{op | ndx: ndx, andx: Map.fetch!(andx_map, old_andx)}
+      end)
+
+    # Update andx in refs
+    ref_map =
+      Map.to_list(ref_map)
+      |> Enum.map(fn {{auth, old_andx}, {ref_auth, old_ref_andx}} ->
+        {{auth, Map.fetch!(andx_map, old_andx)}, {ref_auth, Map.fetch!(andx_map, old_ref_andx)}}
+      end)
+      |> Enum.into(%{})
+
+    # Build co-structure
+    rebuild_co_structure(%Chronofold{cf | log: log, andx_map: andx_map, ref_map: ref_map})
+  end
+
+  def rebuild_co_structure(%Chronofold{log: log, ref_map: ref_map} = cf) do
+    {notes, _} =
+      Enum.reduce(log, {%{}, {"", 0}}, fn %LogOp{auth: auth, andx: andx, val: val},
+                                          {notes, {last_auth, last_andx}} ->
+        note =
+          if val == :root || last_auth == auth do
+            []
+          else
+            Keyword.put([], :auth, auth)
+          end
+
+        note =
+          if val == :root || (auth == last_auth && andx == last_andx + 1) do
+            note
+          else
+            {ref_auth, ref_andx} = Map.fetch!(ref_map, {auth, andx})
+            Keyword.put(note, :ref, {ref_auth, ref_andx})
+          end
+
+        if note != [] do
+          {Map.put(notes, {auth, andx}, note), {auth, andx}}
+        else
+          {notes, {auth, andx}}
+        end
+      end)
+
+    %Chronofold{cf | notes: notes}
+  end
+
+  @doc """
+  Converts RON Ops to logical ops, and builds the co-structure.
+  """
+  def to_log(state, updates) do
+    all_ops = state ++ List.flatten(updates)
+
+    cf = Chronofold.new()
+
+    case all_ops do
+      [_header | [%Op{event: event} = root | rest]] ->
+        # Root is always self-referential
+        root = %Op{root | reference: event}
+
+        Enum.reduce([root | rest], cf, fn op, cf -> add_op(op, cf) end)
+        |> finalize_log()
+
+      _empty ->
+        {:error, "no root"}
+    end
+  end
+
+  def add_op(%Op{term: :header}, cf), do: cf
+  def add_op(%Op{term: :query}, cf), do: cf
+  def add_op(%Op{event: %UUID{lo: 0}}, cf), do: cf
+  def add_op(%Op{reference: %UUID{lo: 0}}, cf), do: cf
+
+  def add_op(%Op{event: ev, reference: ref, atoms: [0]}, cf) do
+    register_op(cf, ev, ref, :root)
+  end
+
+  def add_op(%Op{event: ev, reference: ref, atoms: [-1]}, cf) do
+    register_op(cf, ev, ref, :del)
+  end
+
+  def add_op(%Op{event: ev, reference: ref, atoms: [s]}, cf) when is_binary(s) do
+    register_op(cf, ev, ref, String.slice(s, 0, 1))
+  end
+
+  def add_op(_, cf), do: cf
+
+  ####### Older stuff
+
   @doc """
   Returns the 60-bit unsigned integer that corresponds
   to the string representation for an author.
@@ -36,25 +190,9 @@ defmodule Crdt.Chronofold do
   every process `α ∈ proc(R)` the sequence
   `log(α) = ⟨α 1 , α 2 , . . . , α lh(α)⟩`.
   """
-  def log(state, auth, opts \\ []) do
-    log_ops(state, auth, opts)
+  def log(state, _auth, opts \\ []) do
+    filter_ops(state, opts)
     |> Enum.map(fn op -> op.event end)
-  end
-
-  def log_ops(state, _auth, opts \\ []) do
-    ops =
-      Enum.reduce(state, [], fn
-        %Op{term: :header}, acc -> acc
-        %Op{term: :query}, acc -> acc
-        %Op{event: %UUID{lo: 0}}, acc -> acc
-        op, acc -> [op | acc]
-      end)
-      |> Enum.reverse()
-
-    case Keyword.get(opts, :k) do
-      nil -> ops
-      k -> Enum.take(ops, k)
-    end
   end
 
   def first_auth!(state) do
@@ -148,15 +286,31 @@ defmodule Crdt.Chronofold do
     all_ops = state ++ List.flatten(updates)
 
     case all_ops do
-      [header | [%Op{event: %UUID{lo: auth}} = root | rest]] ->
+      [header | [%Op{event: event} = root | rest]] ->
         # Root is always self-referential
-        root = %Op{root | reference: root.event}
+        root = %Op{root | reference: event}
 
         [header | [root | rest]]
-        |> log_ops(auth)
+        |> filter_ops()
 
       empty ->
         empty
+    end
+  end
+
+  defp filter_ops(state, opts \\ []) do
+    ops =
+      Enum.reduce(state, [], fn
+        %Op{term: :header}, acc -> acc
+        %Op{term: :query}, acc -> acc
+        %Op{event: %UUID{lo: 0}}, acc -> acc
+        op, acc -> [op | acc]
+      end)
+      |> Enum.reverse()
+
+    case Keyword.get(opts, :k) do
+      nil -> ops
+      k -> Enum.take(ops, k)
     end
   end
 
