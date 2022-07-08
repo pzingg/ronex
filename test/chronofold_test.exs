@@ -62,11 +62,11 @@ defmodule ChronofoldTest do
     IO.puts("red #{Frame.format(red)}")
     # IO.puts("vals #{inspect(Chronofold.vals(red))}")
     # IO.puts("refs #{inspect(Chronofold.refs(red))}")
-    IO.puts("log(alice) #{inspect(Chronofold.log(red, alice))}")
+    IO.puts("log(alice) #{inspect(Chronofold.old_log(red, alice))}")
 
     {final, cfd} = Chronofold.map(red)
     IO.puts("final #{Frame.format(final)}")
-    IO.puts("cfd #{Chronofold.format(cfd)}")
+    IO.puts("cfd #{Chronofold.old_format(cfd)}")
 
     assert Chronofold.map_result(cfd) == "PINSK"
   end
@@ -88,11 +88,11 @@ defmodule ChronofoldTest do
     IO.puts("red #{Frame.format(red)}")
     IO.puts("vals #{inspect(Chronofold.vals(red))}")
     IO.puts("refs #{inspect(Chronofold.refs(red))}")
-    IO.puts("log(alice) #{inspect(Chronofold.log(red, alice))}")
+    IO.puts("log(alice) #{inspect(Chronofold.old_log(red, alice))}")
 
     {final, cfd} = Chronofold.map(red)
     IO.puts("final #{Frame.format(final, jumps: true)}")
-    IO.puts("cfd #{Chronofold.format(cfd)}")
+    IO.puts("cfd #{Chronofold.old_format(cfd)}")
 
     assert Chronofold.map_result(cfd) == "Minsk"
   end

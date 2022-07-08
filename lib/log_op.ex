@@ -10,7 +10,7 @@ defmodule LogOp do
             val: nil,
             ndx: nil
 
-  def format_ts({auth, andx}) do
+  def format_ts({andx, auth}) do
     "⟨" <>
       String.pad_trailing(auth, 6) <> " " <> String.pad_leading(Integer.to_string(andx), 2) <> "⟩"
   end
@@ -31,25 +31,25 @@ defmodule LogOp do
         s -> String.pad_trailing(" '#{s}'", 6)
       end
 
-    ref = Chronofold.ref_ndx(log_op, cf)
+    ref = Chronofold.ref_ndx(cf, log_op)
 
     ref_str =
       if !is_nil(ref) do
-        " ref:#{format_ts(ref)}"
+        " ref:#{ref}"
       else
         ""
       end
 
-    next = Chronofold.next_ndx(log_op, cf)
+    next = Chronofold.next_ndx(cf, log_op)
 
     next_str =
-      if !is_nil(next) do
-        " next:#{format_ts(next)}"
-      else
-        ""
+      case next do
+        nil -> ""
+        :inf -> " next:inf"
+        _ -> " next:#{next}"
       end
 
-    auth_note = Chronofold.auth_note(log_op, cf)
+    auth_note = Chronofold.auth_note(cf, log_op)
 
     auth_str =
       if !is_nil(auth_note) do
@@ -58,6 +58,6 @@ defmodule LogOp do
         ""
       end
 
-    "[#{ndx}]#{format_ts({auth, andx})}#{val_str}#{ref_str}#{next_str}#{auth_str}"
+    "[#{ndx}]#{format_ts({andx, auth})}#{val_str}#{ref_str}#{next_str}#{auth_str}"
   end
 end

@@ -3,6 +3,27 @@ defmodule NewChronofoldTest do
 
   alias Crdt.Chronofold
 
+  @tag :skip
+  test "Figure 1 example" do
+    st = "*cfold#test!@]1+alice=0,@]2'M',@]3'I',@4'N',@5'S',@6'K',"
+    upd = "*cfold#test@]7+bob<]2+alice=-1,@8'P',"
+
+    test_cf("figure 1", st, upd)
+  end
+
+  @tag :skip
+  test "Figure 2 example" do
+    st =
+      "*cfold#test!@}01+alice=0,@}02'S',@}03'T',@}04'A',@}05'N',@}06'I',@}07'S',@}08'L',@}09'A',@}10'V',@}11'S',@}12'K',@}13'Y',"
+
+    upd = [
+      "*cfold#test@}10+bob<}09+alice=-1,@}11=-1,@}12=-1,@}13=-1,@}14=-1,@}15=-1,@}16=-1,@}17=-1,",
+      "*cfold#test@}18+bob<}17'L',@}19'O',@}20'B',@}21'A',@}22'C',@}23'H',@}23'E',"
+    ]
+
+    test_cf("figure 1", st, upd)
+  end
+
   test "Section A example - log alpha" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -18,6 +39,7 @@ defmodule NewChronofoldTest do
     test_cf("log alpha", st, upd)
   end
 
+  @tag :skip
   test "Section A example - log beta" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -32,6 +54,7 @@ defmodule NewChronofoldTest do
     test_cf("log beta", st, upd)
   end
 
+  @tag :skip
   test "Section A example - log gamma" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -47,6 +70,7 @@ defmodule NewChronofoldTest do
     test_cf("log gamma", st, upd)
   end
 
+  @tag :skip
   test "Figure 4 example - a6g14b8" do
     st = "*cfold#test!@}01+alice=0,"
 
@@ -61,13 +85,18 @@ defmodule NewChronofoldTest do
 
   def test_cf(label, st, upd) do
     state = Frame.parse!(st)
-    updates = Enum.map(upd, &Frame.parse!/1)
-    cf = Chronofold.to_log(state, updates)
+    updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
+    cf = Chronofold.parse_input(state, updates)
 
-    IO.puts("\n#{label} log:")
+    Chronofold.dump_input(cf)
 
-    for op <- cf.log do
-      IO.puts(LogOp.format(op, cf))
-    end
+    cf =
+      Enum.reduce(2..Enum.count(cf.input), cf, fn _i, cf ->
+        Chronofold.process_op(cf)
+      end)
+
+    Chronofold.dump_log(cf)
+    result = Chronofold.map(cf)
+    IO.puts("\nresult: #{result}")
   end
 end
