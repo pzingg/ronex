@@ -5,7 +5,25 @@ defmodule ChronofoldTest do
 
   doctest Chronofold
 
-  @tag :skip
+  test "Figure 1 example" do
+    st = "*cfold#test!@]1+alice=0,@]2'M',@]3'I',@4'N',@5'S',@6'K',"
+    upd = "*cfold#test@]7+bob<]2+alice=-1,@8'P',"
+
+    test_cf("figure 1", st, upd, "PINSK")
+  end
+
+  test "Figure 2 example" do
+    st =
+      "*cfold#test!@}01+alice=0,@}02'S',@}03'T',@}04'A',@}05'N',@}06'I',@}07'S',@}08'L',@}09'A',@}10'V',@}11'S',@}12'K',@}13'Y',"
+
+    upd = [
+      "*cfold#test@}10+bob<}09+alice=-1,@}11=-1,@}12=-1,@}13=-1,@}14=-1,@}15=-1,@}16=-1,@}17=-1,",
+      "*cfold#test@}18+bob<}17'L',@}19'O',@}20'B',@}21'A',@}22'C',@}23'H',@}23'E',"
+    ]
+
+    test_cf("figure 1", st, upd, "LOBACHEVSKY")
+  end
+
   test "Section A example - log alpha" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -18,10 +36,9 @@ defmodule ChronofoldTest do
       "*cfold#test!@]8+bob<]7+george'K',"
     ]
 
-    test_section_a("log alpha", st, upd)
+    test_cf("log alpha", st, upd, "PINSK")
   end
 
-  @tag :skip
   test "Section A example - log beta" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -33,10 +50,9 @@ defmodule ChronofoldTest do
       "*cfold#test!@]8+bob<]7+george'K',"
     ]
 
-    test_section_a("log beta", st, upd)
+    test_cf("log beta", st, upd, "PINSK")
   end
 
-  @tag :skip
   test "Section A example - log gamma" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -49,26 +65,7 @@ defmodule ChronofoldTest do
       "*cfold#test!@]7+george<]5+alice'S',"
     ]
 
-    test_section_a("log gamma", st, upd)
-  end
-
-  def test_section_a(label, st, upd) do
-    alice = Chronofold.author("alice")
-    state = Frame.parse!(st)
-    updates = Enum.map(upd, &Frame.parse!/1)
-    red = Chronofold.reduce(state, updates)
-
-    IO.puts("section a #{label}")
-    IO.puts("red #{Frame.format(red)}")
-    # IO.puts("vals #{inspect(Chronofold.vals(red))}")
-    # IO.puts("refs #{inspect(Chronofold.refs(red))}")
-    IO.puts("log(alice) #{inspect(Chronofold.old_log(red, alice))}")
-
-    {final, cfd} = Chronofold.map(red)
-    IO.puts("final #{Frame.format(final)}")
-    IO.puts("cfd #{Chronofold.old_format(cfd)}")
-
-    assert Chronofold.map_result(cfd) == "PINSK"
+    test_cf("log gamma", st, upd, "PINS")
   end
 
   test "Figure 4 example - a6g14b8" do
@@ -80,20 +77,32 @@ defmodule ChronofoldTest do
       "*cfold#test!@}07+bob<}02+alice=-1,@}08<}07'M',"
     ]
 
-    alice = Chronofold.author("alice")
+    test_cf("figure 4", st, upd, "Minsk")
+  end
+
+  def test_cf(label, st, upd, expected, opts \\ []) do
     state = Frame.parse!(st)
-    updates = Enum.map(upd, &Frame.parse!/1)
-    red = Chronofold.reduce(state, updates)
+    updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
+    cf = Chronofold.parse_input(state, updates)
 
-    IO.puts("red #{Frame.format(red)}")
-    IO.puts("vals #{inspect(Chronofold.vals(red))}")
-    IO.puts("refs #{inspect(Chronofold.refs(red))}")
-    IO.puts("log(alice) #{inspect(Chronofold.old_log(red, alice))}")
+    show_all = Keyword.get(opts, :verbose)
+    Chronofold.dump_input(cf)
 
-    {final, cfd} = Chronofold.map(red)
-    IO.puts("final #{Frame.format(final, jumps: true)}")
-    IO.puts("cfd #{Chronofold.old_format(cfd)}")
+    cf =
+      Enum.reduce(2..Enum.count(cf.input), cf, fn _i, cf ->
+        cf = Chronofold.process_op(cf)
+        if show_all do
+          Chronofold.dump_log(cf)
+        end
+        cf
+      end)
 
-    assert Chronofold.map_result(cfd) == "Minsk"
+    if !show_all do
+      Chronofold.dump_log(cf)
+    end
+
+    result = Chronofold.map(cf)
+    IO.puts("\n#{label} result: #{result}")
+    assert result == expected
   end
 end
