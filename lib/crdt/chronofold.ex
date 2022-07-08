@@ -66,22 +66,22 @@ defmodule Crdt.Chronofold do
     end
   end
 
-  def ref_ndx(%Chronofold{notes: notes}, op) do
-    case Map.get(notes, op.ndx) do
+  def ref_ndx(%Chronofold{notes: notes}, ndx) do
+    case Map.get(notes, ndx) do
       nil -> nil
       note -> Keyword.get(note, :ref)
     end
   end
 
-  def next_ndx(%Chronofold{notes: notes}, op) do
-    case Map.get(notes, op.ndx) do
+  def next_ndx(%Chronofold{notes: notes}, ndx) do
+    case Map.get(notes, ndx) do
       nil -> nil
       note -> Keyword.get(note, :next)
     end
   end
 
-  def auth_note(%Chronofold{notes: notes}, op) do
-    case Map.get(notes, op.ndx) do
+  def auth_note(%Chronofold{notes: notes}, ndx) do
+    case Map.get(notes, ndx) do
       nil -> nil
       note -> Keyword.get(note, :auth)
     end
@@ -233,7 +233,7 @@ defmodule Crdt.Chronofold do
         cf =
           case from_ref do
             nil ->
-              case ref_ndx(cf, last_op) do
+              case ref_ndx(cf, last_op.ndx) do
                 nil ->
                   cf
 
@@ -247,19 +247,29 @@ defmodule Crdt.Chronofold do
               end
 
             rndx ->
-              cf
-              |> add_note(rndx, :next, ndx)
-              |> add_note(ndx, :next, rndx + 1)
+              if ndx == rndx + 1 do
+                # Normal flow
+                cf
+              else
+                # Add a new jump from rndx to us and from us
+                # to rndx + 1
+                nndx = next_ndx(cf, rndx) || rndx + 1
+
+                cf
+                |> add_note(rndx, :next, ndx)
+                |> add_note(ndx, :next, nndx)
+              end
           end
 
         cf =
           if is_nil(from_ref) do
-            case next_ndx(cf, last_op) do
+            case next_ndx(cf, last_op.ndx) do
               nil ->
                 cf
 
-              # :inf or an ndx
               nndx ->
+                # We have to move the ref jump from last_op to this one
+                # :inf or an ndx
                 cf
                 |> remove_note(last_op.ndx, :next)
                 |> add_note(ndx, :next, nndx)
@@ -288,14 +298,29 @@ defmodule Crdt.Chronofold do
 
   def new_tree_ref(cf, last_op, op) do
     {ref_andx, ref_auth} = get_ref!(cf, op)
-    in_seq = last_op.auth == op.auth && last_op.andx == ref_andx && last_op.auth == ref_auth
+    {lref_andx, lref_auth} = get_ref!(cf, last_op)
 
-    if in_seq do
+    # IO.puts(
+    #  "new_tree_ref last (#{last_op.auth} #{last_op.andx}) ref (#{ref_auth} #{ref_andx}) lref (#{lref_auth} #{lref_andx})"
+    # )
+
+    if last_op.auth == ref_auth && last_op.andx == ref_andx do
       nil
     else
-      case at_ts(cf.log, {ref_andx, ref_auth}) do
-        nil -> nil
-        op -> op.ndx
+      if lref_andx == ref_andx && lref_auth == ref_auth do
+        nil
+      else
+        case at_ts(cf.log, {ref_andx, ref_auth}) do
+          nil ->
+            nil
+
+          %LogOp{val: :root} ->
+            nil
+
+          %LogOp{ndx: rndx} ->
+            # IO.puts("new_tree_ref rndx #{rndx}")
+            rndx
+        end
       end
     end
   end
@@ -313,10 +338,12 @@ defmodule Crdt.Chronofold do
 
   def do_op(%Chronofold{} = cf, ndx, acc) do
     op = at(cf.log, ndx)
+
     if is_nil(op) do
       {nil, acc}
     else
       nndx = follow(cf, op)
+
       case op do
         %LogOp{val: :root} -> {nndx, acc}
         %LogOp{val: :del} -> {nndx, String.slice(acc, 0, String.length(acc) - 1)}
@@ -326,7 +353,7 @@ defmodule Crdt.Chronofold do
   end
 
   def follow(%Chronofold{} = cf, op) do
-    case next_ndx(cf, op) do
+    case next_ndx(cf, op.ndx) do
       nil -> op.ndx + 1
       :inf -> nil
       nndx -> nndx

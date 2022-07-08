@@ -31,7 +31,7 @@ defmodule LogOp do
         s -> String.pad_trailing(" '#{s}'", 6)
       end
 
-    ref = Chronofold.ref_ndx(cf, log_op)
+    ref = Chronofold.ref_ndx(cf, log_op.ndx)
 
     ref_str =
       if !is_nil(ref) do
@@ -40,7 +40,7 @@ defmodule LogOp do
         ""
       end
 
-    next = Chronofold.next_ndx(cf, log_op)
+    next = Chronofold.next_ndx(cf, log_op.ndx)
 
     next_str =
       case next do
@@ -49,7 +49,7 @@ defmodule LogOp do
         _ -> " next:#{next}"
       end
 
-    auth_note = Chronofold.auth_note(cf, log_op)
+    auth_note = Chronofold.auth_note(cf, log_op.ndx)
 
     auth_str =
       if !is_nil(auth_note) do

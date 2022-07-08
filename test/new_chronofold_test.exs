@@ -3,7 +3,6 @@ defmodule NewChronofoldTest do
 
   alias Crdt.Chronofold
 
-  @tag :skip
   test "Figure 1 example" do
     st = "*cfold#test!@]1+alice=0,@]2'M',@]3'I',@4'N',@5'S',@6'K',"
     upd = "*cfold#test@]7+bob<]2+alice=-1,@8'P',"
@@ -11,7 +10,6 @@ defmodule NewChronofoldTest do
     test_cf("figure 1", st, upd)
   end
 
-  @tag :skip
   test "Figure 2 example" do
     st =
       "*cfold#test!@}01+alice=0,@}02'S',@}03'T',@}04'A',@}05'N',@}06'I',@}07'S',@}08'L',@}09'A',@}10'V',@}11'S',@}12'K',@}13'Y',"
@@ -39,7 +37,6 @@ defmodule NewChronofoldTest do
     test_cf("log alpha", st, upd)
   end
 
-  @tag :skip
   test "Section A example - log beta" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -54,7 +51,6 @@ defmodule NewChronofoldTest do
     test_cf("log beta", st, upd)
   end
 
-  @tag :skip
   test "Section A example - log gamma" do
     st = "*cfold#test!@]1+alice=0,"
 
@@ -70,7 +66,6 @@ defmodule NewChronofoldTest do
     test_cf("log gamma", st, upd)
   end
 
-  @tag :skip
   test "Figure 4 example - a6g14b8" do
     st = "*cfold#test!@}01+alice=0,"
 
@@ -83,20 +78,28 @@ defmodule NewChronofoldTest do
     test_cf("figure 4", st, upd)
   end
 
-  def test_cf(label, st, upd) do
+  def test_cf(label, st, upd, opts \\ []) do
     state = Frame.parse!(st)
     updates = List.wrap(upd) |> Enum.map(&Frame.parse!/1)
     cf = Chronofold.parse_input(state, updates)
 
+    show_all = Keyword.get(opts, :verbose)
     Chronofold.dump_input(cf)
 
     cf =
       Enum.reduce(2..Enum.count(cf.input), cf, fn _i, cf ->
-        Chronofold.process_op(cf)
+        cf = Chronofold.process_op(cf)
+        if show_all do
+          Chronofold.dump_log(cf)
+        end
+        cf
       end)
 
-    Chronofold.dump_log(cf)
+    if !show_all do
+      Chronofold.dump_log(cf)
+    end
+
     result = Chronofold.map(cf)
-    IO.puts("\nresult: #{result}")
+    IO.puts("\n#{label} result: #{result}")
   end
 end
