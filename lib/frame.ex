@@ -102,7 +102,7 @@ defmodule Frame do
   end
 
   def format(frame, opts \\ []) do
-    if frame == [] do
+    if Enum.empty?(frame) do
       "<empty>\n"
     else
       Enum.reduce(frame, "", fn

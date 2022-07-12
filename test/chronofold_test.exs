@@ -6,8 +6,8 @@ defmodule ChronofoldTest do
   doctest Chronofold
 
   test "Figure 1 example" do
-    st = "*cfold#test!@]1+alice=0,@]2'M',@]3'I',@4'N',@5'S',@6'K',"
-    upd = "*cfold#test@]7+bob<]2+alice=-1,@8'P',"
+    st = "*cfold#test!@]1+alice=0,@]2'M',@]3'I',@]4'N',@]5'S',@]6'K',"
+    upd = "*cfold#test@]7+bob<]2+alice=-1,@]8'P',"
 
     test_cf("figure 1", st, upd, "PINSK")
   end
@@ -18,7 +18,7 @@ defmodule ChronofoldTest do
 
     upd = [
       "*cfold#test@}10+bob<}09+alice=-1,@}11=-1,@}12=-1,@}13=-1,@}14=-1,@}15=-1,@}16=-1,@}17=-1,",
-      "*cfold#test@}18+bob<}17'L',@}19'O',@}20'B',@}21'A',@}22'C',@}23'H',@}23'E',"
+      "*cfold#test@}18+bob<}17'L',@}19'O',@}20'B',@}21'A',@}22'C',@}23'H',@}24'E',"
     ]
 
     test_cf("figure 1", st, upd, "LOBACHEVSKY")
@@ -91,9 +91,11 @@ defmodule ChronofoldTest do
     cf =
       Enum.reduce(2..Enum.count(cf.input), cf, fn _i, cf ->
         cf = Chronofold.process_op(cf)
+
         if show_all do
           Chronofold.dump_log(cf)
         end
+
         cf
       end)
 

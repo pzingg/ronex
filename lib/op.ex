@@ -13,13 +13,13 @@ defmodule Op do
     prefixes = ["#", "@", "<", ":", "'", "!", "^", "=", ">", ",", ";", "?"]
 
     # type
-    case spec_uuid(str, "*", prev_ty, prev_loc, prefixes) do
+    case spec_uuid(str, "*", prev_ty, nil, prefixes) do
       {:ok, {my_ty, str}} ->
         prefixes = Enum.slice(prefixes, 1..-1)
         str = String.trim_leading(str)
 
         # object
-        case spec_uuid(str, "#", prev_obj, my_ty, prefixes) do
+        case spec_uuid(str, "#", prev_obj, nil, prefixes) do
           {:ok, {my_obj, str}} ->
             prefixes = Enum.slice(prefixes, 1..-1)
             str = String.trim_leading(str)
@@ -31,15 +31,15 @@ defmodule Op do
                 prefixes = Enum.slice(prefixes, 1..-1)
                 str = String.trim_leading(str)
 
-                # reference. use the current event's UUID as default
-                case spec_uuid(str, "<", my_ev, my_obj, prefixes) do
+                # reference. use the previous event's UUID as default
+                case spec_uuid(str, "<", prev_ev, my_obj, prefixes) do
                   {:ok, {my_ref, str}} ->
                     my_ref = as_event_or_derived(my_ref)
                     prefixes = Enum.slice(prefixes, 1..-1)
                     str = String.trim_leading(str)
 
                     # location
-                    case spec_uuid(str, ":", prev_loc, my_ev, prefixes) do
+                    case spec_uuid(str, ":", prev_loc, my_obj, prefixes) do
                       {:ok, {my_loc, str}} ->
                         str = String.trim_leading(str)
 
