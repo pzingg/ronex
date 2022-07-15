@@ -562,7 +562,7 @@ defmodule UUID do
   end
 
   def u64_to_string_impl(value) do
-    Enum.map(0..10, fn idx ->
+    Enum.map(0..9, fn idx ->
       idx = (9 - idx) * 6
       val = value >>> idx &&& 63
 

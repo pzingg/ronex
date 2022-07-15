@@ -26,7 +26,9 @@ defmodule Crdt.Chronofold do
             tail: nil,
             notes: %{},
             andx_map: nil,
-            ref_map: []
+            ref_map: [],
+            verbose: false,
+            reduce_ts: false
 
   @doc """
   `:input` - a list of `LogOp`s to be processed.
@@ -46,9 +48,14 @@ defmodule Crdt.Chronofold do
   `:ref_map` - an ordered list of tuples where the first element of
     the tuple is a `⟨i, α⟩` timestamp, and the second element is
     its parent timestamp, built from the parsed RON input
+  `:verbose - If true, dump parse and map information
   """
-  def new() do
-    %Chronofold{andx_map: MapSet.new()}
+  def new(opts \\ []) do
+    %Chronofold{
+      andx_map: MapSet.new(),
+      verbose: Keyword.get(opts, :verbose, false),
+      reduce_ts: Keyword.get(opts, :reduce_ts, false)
+    }
   end
 
   @doc """
@@ -252,9 +259,9 @@ defmodule Crdt.Chronofold do
   @doc """
   Converts RON Ops to logical ops, and builds the co-structure.
   """
-  def parse_input(state, updates) do
+  def parse_input(state, updates, opts \\ []) do
     all_ops = state ++ List.flatten(updates)
-    cf = Chronofold.new()
+    cf = Chronofold.new(opts)
 
     case all_ops do
       [_header | [%Op{event: event} = root | rest]] ->
@@ -333,23 +340,33 @@ defmodule Crdt.Chronofold do
   defp parse_auth(auth), do: UUID.u64_to_string(auth)
 
   defp parse_andx(andx) do
-    UUID.u64_to_string(andx, trim: false) |> String.to_integer()
+    case UUID.u64_to_string(andx, trim: false) |> String.trim_leading("0") do
+      "" -> 0
+      str -> String.to_integer(str)
+    end
   end
 
-  defp finalize_input(%Chronofold{input: input, andx_map: andx_map, ref_map: ref_map} = cf) do
+  defp finalize_input(
+         %Chronofold{input: input, andx_map: andx_map, ref_map: ref_map, reduce_ts: reduce_ts} =
+           cf
+       ) do
     # Convert to 1-based map, sorted by original times
     andx_map =
-      MapSet.to_list(andx_map)
-      |> Enum.sort()
-      |> Enum.with_index(1)
-      |> Enum.into(%{})
+      if reduce_ts do
+        MapSet.to_list(andx_map)
+        |> Enum.sort()
+        |> Enum.with_index(1)
+        |> Enum.into(%{})
+      else
+        nil
+      end
 
     # Update andx in input, add ndx
     input =
       Enum.reverse(input)
       |> Enum.with_index(1)
       |> Enum.map(fn {%LogOp{andx: old_andx} = op, ndx} ->
-        %LogOp{op | ndx: ndx, andx: Map.fetch!(andx_map, old_andx)}
+        %LogOp{op | ndx: ndx, andx: map_andx(andx_map, old_andx)}
       end)
 
     # Update andx in refs
@@ -357,7 +374,7 @@ defmodule Crdt.Chronofold do
       ref_map
       |> Enum.reverse()
       |> Enum.map(fn {{old_andx, auth}, {old_ref_andx, ref_auth}} ->
-        {{Map.fetch!(andx_map, old_andx), auth}, {Map.fetch!(andx_map, old_ref_andx), ref_auth}}
+        {{map_andx(andx_map, old_andx), auth}, {map_andx(andx_map, old_ref_andx), ref_auth}}
       end)
       |> Enum.sort_by(fn {{t_child, _}, ts_ref} -> {ts_ref, 0 - t_child} end)
 
@@ -374,6 +391,9 @@ defmodule Crdt.Chronofold do
         ref_map: ref_map
     }
   end
+
+  defp map_andx(%{} = andx_map, andx), do: Map.fetch!(andx_map, andx)
+  defp map_andx(_, andx), do: andx
 
   @doc """
   Pulls the next op from the `:input` list, and weaves it into
@@ -404,29 +424,30 @@ defmodule Crdt.Chronofold do
   # ops with greater timestamps also having `⟨k, γ⟩` as their parent).
   # If found, the new op is inserted after preemptive siblings and
   # their CT subtrees.
-  defp do_weave(%Chronofold{log: log} = cf, %LogOp{andx: andx, auth: auth} = op) do
+  defp do_weave(%Chronofold{log: log, verbose: verbose} = cf, %LogOp{andx: andx, auth: auth} = op) do
     # ⟨i, β⟩ = i_beta = ts(op)
     {i, _} = i_beta = {andx, auth}
     # ⟨k, γ⟩ = k_gamma = ref(⟨i, β⟩)
     {k, _} = k_gamma = mapped_ref!(cf, i_beta)
     # α j = ⟨k, γ⟩
     j = ndx_of(log, k_gamma)
-
-    IO.puts("\ndo_weave #{LogOp.format(op, cf)} ref:#{LogOp.format(k_gamma)}")
-    IO.puts("i #{i} j #{j} k #{k}")
-
-    if j == k do
-      IO.puts("j == k")
-    end
-
     {preemptive, rest} = siblings_at(cf, k_gamma, i_beta)
 
-    for op_sib <- preemptive do
-      IO.puts("PREMPT: #{LogOp.format(op_sib, cf)}")
-    end
+    if verbose do
+      IO.puts("\ndo_weave #{LogOp.format(op, cf)} ref:#{LogOp.format(k_gamma)}")
+      IO.puts("i #{i} j #{j} k #{k}")
 
-    for op_sib <- rest do
-      IO.puts("NORMAL: #{LogOp.format(op_sib, cf)}")
+      if j == k do
+        IO.puts("j == k")
+      end
+
+      for op_sib <- preemptive do
+        IO.puts("PREMPT: #{LogOp.format(op_sib, cf)}")
+      end
+
+      for op_sib <- rest do
+        IO.puts("NORMAL: #{LogOp.format(op_sib, cf)}")
+      end
     end
 
     case List.first(preemptive) do
@@ -436,7 +457,11 @@ defmodule Crdt.Chronofold do
       %LogOp{andx: andx, auth: auth} ->
         ts_tree = {andx, auth}
         ts_pred = subtree_last(cf, ts_tree)
-        IO.puts("subtree #{LogOp.format(ts_tree)} last #{LogOp.format(ts_pred)}")
+
+        if verbose do
+          IO.puts("subtree #{LogOp.format(ts_tree)} last #{LogOp.format(ts_pred)}")
+        end
+
         insert_after(cf, op, ts_pred)
     end
   end
@@ -458,7 +483,6 @@ defmodule Crdt.Chronofold do
          %LogOp{andx: andx, auth: auth, ndx: ndx} = op,
          ts_pred
        ) do
-    IO.puts("insert_after op at #{ndx}")
     ts_new = {andx, auth}
 
     {%Chronofold{cf | log: log ++ [op]}
@@ -521,18 +545,22 @@ defmodule Crdt.Chronofold do
     end
   end
 
-  defp update_next_links(%Chronofold{} = cf, ts_new, ts_pred) do
+  defp update_next_links(%Chronofold{verbose: verbose} = cf, ts_new, ts_pred) do
     case get_successor!(cf, ts_pred) do
       {:tail, nil} ->
-        IO.puts("move :tail to #{LogOp.format(ts_new)}")
+        if verbose do
+          IO.puts("move :tail to #{LogOp.format(ts_new)}")
+        end
 
         cf
         |> set_next(ts_pred, ts_new)
         |> set_tail(ts_new)
 
       {_, ts_succ} ->
-        IO.puts("set :next for pred #{LogOp.format(ts_pred)} to #{LogOp.format(ts_new)}")
-        IO.puts("set :next for new #{LogOp.format(ts_new)} to #{LogOp.format(ts_succ)}")
+        if verbose do
+          IO.puts("set :next for pred #{LogOp.format(ts_pred)} to #{LogOp.format(ts_new)}")
+          IO.puts("set :next for new #{LogOp.format(ts_new)} to #{LogOp.format(ts_succ)}")
+        end
 
         cf
         |> set_next(ts_pred, ts_new)
