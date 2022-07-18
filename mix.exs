@@ -4,8 +4,8 @@ defmodule Ronex.MixProject do
   def project do
     [
       app: :ronex,
-      version: "0.1.0",
-      elixir: "~> 1.7",
+      version: "0.2.0",
+      elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -20,6 +20,8 @@ defmodule Ronex.MixProject do
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
-    []#{:heap, "~> 2.0"}]
+    [
+      {:ex_parameterized, "~> 1.3.7"}
+    ]
   end
 end
